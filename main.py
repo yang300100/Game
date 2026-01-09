@@ -43,33 +43,40 @@ class Player:
         print("公共群聊")
         nickname_list.append("公共群聊")
         print("")
-        choice = input("输入玩家昵称开启聊天，输入其他退出手机")
-        if choice in nickname_list:
-            print("聊天已开启，输入exit退出聊天")
-            obj_id = 0
-            for i in player_list:
-                if i.nickname == choice:
-                    obj_id = i.id
-            if choice == "公共群聊":
-                obj_id = len(player_list)+ 1
-            print("历史消息：-----")
-            for i in self.wechat[obj_id]:
-                print(i)
-            print("新消息：------")
-            inp = input()
-            while inp != "exit":
+        choice = input("输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机\n")
+        item_list = [i.name for i in self.bag]
+        while choice != "退出":
+            if choice in item_list:
+                for i in self.bag:
+                    if i.name == choice:
+                        print(f"物品名称：{i.name}\n物品描述：{i.describe}\n获取时间：{i.get_time[0]}年{i.get_time[1]}月{i.get_time[2]}日 {i.get_time[3]}:{i.get_time[4]}\n物品类型：{i.type}")
+            if choice in nickname_list:
+                print("聊天已开启，输入exit退出聊天")
+                obj_id = 0
+                for i in player_list:
+                    if i.nickname == choice:
+                        obj_id = i.id
                 if choice == "公共群聊":
-                    for i in player_list:
-                        i.wechat[obj_id].append(f"{self.nickname}:"+inp)
-                        i.message_len[obj_id] += 1
-                        print(inp + f":{self.nickname}")
+                    obj_id = len(player_list)+ 1
+                print("历史消息：-----")
+                for i in self.wechat[obj_id]:
+                    print(i)
+                print("新消息：------")
+                inp = input()
+                while inp != "exit":
+                    if choice == "公共群聊":
+                        for i in player_list:
+                            i.wechat[obj_id].append(f"{self.nickname}:"+inp)
+                            i.message_len[obj_id] += 1
+                            print(inp + f":{self.nickname}")
+                            inp = input()
+                    else:
+                        self.wechat[obj_id].append(f"{self.nickname}:"+inp) # 添加消息到自己消息列表中
+                        player_list[obj_id].wechat[self.id].append(f"{self.nickname}:"+inp)# 添加消息到对方消息列表中
+                        player_list[obj_id].message_len[self.id] += 1   #修改对方消息变化量
+                        print(inp+f":{self.nickname}")
                         inp = input()
-                else:
-                    self.wechat[obj_id].append(f"{self.nickname}:"+inp) # 添加消息到自己消息列表中
-                    player_list[obj_id].wechat[self.id].append(f"{self.nickname}:"+inp)# 添加消息到对方消息列表中
-                    player_list[obj_id].message_len[self.id] += 1   #修改对方消息变化量
-                    print(inp+f":{self.nickname}")
-                    inp = input()
+            choice = input("输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机")
 
     def move(self):
         choice = ""
@@ -85,6 +92,9 @@ class Player:
         get_distance(self)
         #到达地点后，获取其中物品
         room_id = location_list.index(self.location)
+        if not room_item[room_id]:
+            print(f"你在{self.location}没有发现任何物品")
+            return
         random_item = random.choice(room_item[room_id])
         if random_item.type == "物品":
             self.bag.append(random_item)
@@ -113,7 +123,7 @@ class Player:
         choice = ""
         while choice not in killer_list_nickname:
             choice = input(f"{self.nickname}要选择谁？")
-        killer_choice = input("选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索")
+        killer_choice = input("选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索\n")
         while killer_choice not in ["徒手攻击","使用道具"]:
             killer_choice = input("输入有误，重新输入")
         item_name_list = []
@@ -131,12 +141,20 @@ class Player:
                     print("攻击失败：情报类物品不可用于攻击")
                     break
                 if i.name == item_choice and i.type == "物品":
-                    room_item[location_list.index(self.location)].append(Item(f"{choice}的尸体","被杀害的尸体",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
+                    if get_time()[3]>6 and get_time()[3]<12:
+                        am_or_pm="上午"
+                    elif get_time()[3]>=12 and get_time()[3]<19:
+                        am_or_pm="下午"
+                    elif get_time()[3]>=19 and get_time()[3]<=24:
+                        am_or_pm="晚上"
+                    elif get_time()[3]>=0 and get_time()[3]<=6:
+                        am_or_pm="凌晨"
+                    room_item[location_list.index(self.location)].append(Item(f"{choice}的尸体",f"被杀害的尸体，死亡时间大约在{get_time()[1]}月{get_time()[2]}日的{am_or_pm}",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
                     room_item[location_list.index(self.location)].append(Item("凶器："+ i.name, i.describe, i.get_time, "情报")) #将使用后的道具留在现场，并添加凶器标签
                     #给所有距离小于15的玩家添加物品：奇怪的声音
                     for j in range(0,len(self.distance)):
                         if self.distance[j] <= 15 and player_list[j].id != self.id:
-                            player_list[j].bag.append(Item("奇怪的声音",f"在{get_time[1]}月{get_time[2]}日{get_time[3]}：{get_time[4]}分时，你听到附近传来了一些奇怪的声音",[2026,1,6,9,00,0],"情报"))
+                            player_list[j].bag.append(Item("奇怪的声音",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到附近传来了一些奇怪的声音",get_time(),"情报"))
                     self.bag.remove(i)
                     print(f"道具“{i.name}”已使用")
                     for j in player_list:
@@ -151,10 +169,18 @@ class Player:
             print("使用徒手攻击")
             for j in range(0,len(self.distance)):
                 if self.distance[j] <= 55 and player_list[j].id != self.id:
-                    player_list[j].bag.append(Item("奇怪的声音",f"在{get_time[1]}月{get_time[2]}日{get_time[3]}：{get_time[4]}分时，你听到哪里传来了一些奇怪的声音",[2026,1,6,9,00,0],"情报"))
+                    player_list[j].bag.append(Item("奇怪的声音",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到哪里传来了一些奇怪的声音",get_time(),"情报"))
             for j in player_list:
                 if j.nickname == choice:
-                    room_item[location_list.index(self.location)].append(Item(f"{choice}的尸体","被杀害的尸体",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
+                    if get_time()[3]>6 and get_time()[3]<12:
+                        am_or_pm="上午"
+                    elif get_time()[3]>=12 and get_time()[3]<19:
+                        am_or_pm="下午"
+                    elif get_time()[3]>=19 and get_time()[3]<=24:
+                        am_or_pm="晚上"
+                    elif get_time()[3]>=0 and get_time()[3]<=6:
+                        am_or_pm="凌晨"
+                    room_item[location_list.index(self.location)].append(Item(f"{choice}的尸体",f"被杀害的尸体，死亡时间大约在{get_time()[1]}月{get_time()[2]}日的{am_or_pm}",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
                     j.life = 0
                     j.deadtime = get_time()
                     break
@@ -210,7 +236,7 @@ class Shiro(Player):
                     print("时间输入格式有误，重新输入")
                     time_false=[]
             time_li = [int(time_false[:4]),int(time_false[4:6]),int(time_false[6:8]),int(time_false[8:10]),int(time_false[10:])]
-            false_item = Item("伪证："+name,describe,time_li)
+            false_item = Item("伪证："+name,describe,time_li,"情报")
             self.bag.append(false_item)
             print("伪造完成，伪证已添加至背包")
 
@@ -263,26 +289,26 @@ map_len = [
 ]
 
 room_item = [
-    [Item("绷带","可用于止血或捆绑",[2026,1,6,9,00,0],"物品"),Item("安眠药","对玩家使用后可以使其放弃挣扎",[2026,1,6,9,00,0],"物品"),Item("毒药","可用于杀人",[2026,1,6,9,00,0],"物品")], #医务室
-    [Item("隔音很好的墙壁","这间屋子的墙壁隔音很好，外边更不容易听到屋子里的声音",[2026,1,6,9,00,0],"情报"),Item("破碎的镜子","淋浴房中年久失修的镜子已经碎裂，玻璃渣散落一地",[2026,1,6,9,00,0],"物品")], #淋浴房
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #日光房
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #杂物处
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #中庭
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #接客室
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #女厕
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #会客厅
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #玄关大厅
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #审判庭入口过道
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #食堂
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #厨房
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #审判庭
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #牢房
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #焚烧炉
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #惩罚室
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #娱乐室
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #工作室
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"], #2F大厅
-    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","物品类物品",[2026,1,6,9,00,0],"物品"),Item("test3","物品类物品",[2026,1,6,9,00,0]),"物品"]  #图书室
+    [Item("绷带","可用于止血或捆绑",[2026,1,6,9,00,0],"道具"),Item("安眠药","对玩家使用后可以使其放弃挣扎",[2026,1,6,9,00,0],"道具"),Item("毒药","可用于杀人",[2026,1,6,9,00,0],"道具")], #医务室
+    [Item("隔音很好的墙壁","这间屋子的墙壁隔音很好，外边更不容易听到屋子里的声音",[2026,1,6,9,00,0],"情报"),Item("破碎的镜子","淋浴房中年久失修的镜子已经碎裂，玻璃渣散落一地",[2026,1,6,9,00,0],"道具")], #淋浴房
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #日光房
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #杂物处
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #中庭
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #接客室
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #女厕
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #会客厅
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #玄关大厅
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #审判庭入口过道
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #食堂
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #厨房
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #审判庭
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #牢房
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #焚烧炉
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #惩罚室
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #娱乐室
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #工作室
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")], #2F大厅
+    [Item("test1","情报类物品",[2026,1,6,9,00,0],"情报"),Item("test2","道具类物品",[2026,1,6,9,00,0],"道具"),Item("test3","道具类物品",[2026,1,6,9,00,0],"道具")]  #图书室
 ]
 
 def get_distance(player):
