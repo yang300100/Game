@@ -101,22 +101,18 @@ class Player:
             return
         killer_list_id = []
         get_distance(self)
-        for i in range(0, len(self.distance)):
-            if self.distance[i] <= 1:
-                killer_list_id.append(i)
         killer_list_nickname = []
-        for i in killer_list_id:
-            for j in player_list:
-                if j.id == i:
-                    killer_list_nickname.append(j.nickname)
+        for i in range(0, len(self.distance)):
+            if self.distance[i] <= 1 and player_list[i].life == 1 and player_list[i].id != self.id:
+                killer_list_id.append(i)
+                killer_list_nickname.append(player_list[i].nickname)
         print("可选目标为：", killer_list_nickname)
+        if not killer_list_nickname:
+            print("攻击失败：附近无目标")
+            return
         choice = ""
         while choice not in killer_list_nickname:
-            try:
-                choice = input(f"{self.nickname}要选择谁？")
-            except:
-                choice = ""
-                print("输入错误，重新输入")
+            choice = input(f"{self.nickname}要选择谁？")
         killer_choice = input("选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索")
         while killer_choice not in ["徒手攻击","使用道具"]:
             killer_choice = input("输入有误，重新输入")
@@ -130,24 +126,38 @@ class Player:
             item_choice = ""
             while item_choice not in item_name_list:
                 item_choice = input("输入道具名称")
-            for i in self.bag:
+            for i in self.bag[:]:#遍历原列表副本，防止下标计数错误
                 if i.name == item_choice and i.type == "情报":
                     print("攻击失败：情报类物品不可用于攻击")
-                    return
+                    break
                 if i.name == item_choice and i.type == "物品":
                     room_item[location_list.index(self.location)].append(Item(f"{choice}的尸体","被杀害的尸体",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
                     room_item[location_list.index(self.location)].append(Item("凶器："+ i.name, i.describe, i.get_time, "情报")) #将使用后的道具留在现场，并添加凶器标签
+                    #给所有距离小于15的玩家添加物品：奇怪的声音
+                    for j in range(0,len(self.distance)):
+                        if self.distance[j] <= 15 and player_list[j].id != self.id:
+                            player_list[j].bag.append(Item("奇怪的声音",f"在{get_time[1]}月{get_time[2]}日{get_time[3]}：{get_time[4]}分时，你听到附近传来了一些奇怪的声音",[2026,1,6,9,00,0],"情报"))
                     self.bag.remove(i)
                     print(f"道具“{i.name}”已使用")
                     for j in player_list:
                         if j.nickname == choice:
                             j.life = 0
                             j.deadtime = get_time()
+                            break
                     break
         elif killer_choice == "使用道具" and not self.bag:
             print("攻击失败：无道具")
         else:
             print("使用徒手攻击")
+            for j in range(0,len(self.distance)):
+                if self.distance[j] <= 55 and player_list[j].id != self.id:
+                    player_list[j].bag.append(Item("奇怪的声音",f"在{get_time[1]}月{get_time[2]}日{get_time[3]}：{get_time[4]}分时，你听到哪里传来了一些奇怪的声音",[2026,1,6,9,00,0],"情报"))
+            for j in player_list:
+                if j.nickname == choice:
+                    room_item[location_list.index(self.location)].append(Item(f"{choice}的尸体","被杀害的尸体",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
+                    j.life = 0
+                    j.deadtime = get_time()
+                    break
 
 class Item:
     def __init__(self,name,describe,time_item,item_type):
