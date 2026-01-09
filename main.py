@@ -13,6 +13,7 @@ class Player:
         self.magic_used = 1  #是否使用技能，未使用为1，使用后为0
         self.wechat = [[] for _ in range(player_num + 1)]   #私聊消息记录
         self.message_len = [0] * (player_num + 1)     #收到通知前消息变化量
+        self.deadtime = []  #死亡时间记录
 
     def check_phone(self):
         global player_list
@@ -109,16 +110,44 @@ class Player:
                 if j.id == i:
                     killer_list_nickname.append(j.nickname)
         print("可选目标为：", killer_list_nickname)
-        choice = 0
-        while choice not in [i for i in range(1, len(killer_list_nickname) + 1)]:
+        choice = ""
+        while choice not in killer_list_nickname:
             try:
-                choice = int(input(f"{self.nickname}要选择谁？"))
+                choice = input(f"{self.nickname}要选择谁？")
             except:
-                choice = 0
+                choice = ""
                 print("输入错误，重新输入")
-        for i in player_list:
-            if i.nickname == killer_list_nickname[choice - 1]:
-                i.life = 0
+        killer_choice = input("选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索")
+        while killer_choice not in ["徒手攻击","使用道具"]:
+            killer_choice = input("输入有误，重新输入")
+        item_name_list = []
+        if killer_choice == "使用道具" and self.bag:
+            print("请提交使用的道具：")
+            for i in self.bag:
+                print(f"“{i.name}”",end="  ")
+                item_name_list.append(i.name)
+            print("")
+            item_choice = ""
+            while item_choice not in item_name_list:
+                item_choice = input("输入道具名称")
+            for i in self.bag:
+                if i.name == item_choice and i.type == "情报":
+                    print("攻击失败：情报类物品不可用于攻击")
+                    return
+                if i.name == item_choice and i.type == "物品":
+                    room_item[location_list.index(self.location)].append(Item(f"{choice}的尸体","被杀害的尸体",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
+                    room_item[location_list.index(self.location)].append(Item("凶器："+ i.name, i.describe, i.get_time, "情报")) #将使用后的道具留在现场，并添加凶器标签
+                    self.bag.remove(i)
+                    print(f"道具“{i.name}”已使用")
+                    for j in player_list:
+                        if j.nickname == choice:
+                            j.life = 0
+                            j.deadtime = get_time()
+                    break
+        elif killer_choice == "使用道具" and not self.bag:
+            print("攻击失败：无道具")
+        else:
+            print("使用徒手攻击")
 
 class Item:
     def __init__(self,name,describe,time_item,item_type):
@@ -126,6 +155,7 @@ class Item:
         self.describe = describe    #描述
         self.get_time = time_item   #获取时间
         self.type = item_type #物品类型：情报/证据
+
 class Shiro(Player):
     def __init__(self,player_id,player_num):
         super().__init__(player_id,player_num)
@@ -173,8 +203,6 @@ class Shiro(Player):
             false_item = Item("伪证："+name,describe,time_li)
             self.bag.append(false_item)
             print("伪造完成，伪证已添加至背包")
-
-
 
 class Person2(Player):
     def __init__(self,player_id,player_num):
