@@ -1,8 +1,8 @@
 import socket
 import threading
 
-SERVER_HOST = "192.168.16.112"
-SERVER_PORT = 9999
+SERVER_HOST_MAIN = "192.168.16.112"
+SERVER_PORT_MAIN = 9999
 BUFFER_SIZE = 1024
 ENCODING = "utf-8"
 
@@ -21,8 +21,12 @@ def recv_message(client_socket):
     exit()
 
 def main():
-    SERVER_HOST = input("请输入游戏服务器IP: ") or SERVER_HOST
-    SERVER_PORT = int(input("请输入游戏服务器端口(可不填): ")) or SERVER_PORT
+    SERVER_HOST = input("请输入游戏服务器IP: ")
+    if not SERVER_HOST:
+        SERVER_HOST = SERVER_HOST_MAIN
+    SERVER_PORT = int(input("请输入游戏服务器端口(可不填): "))
+    if not SERVER_PORT:
+        SERVER_PORT = SERVER_PORT_MAIN
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         # 连接服务端
