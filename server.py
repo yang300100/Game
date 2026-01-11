@@ -402,7 +402,7 @@ def get_message(player_id,message=""):
 
 
 
-def broadcast(message, exclude_conn=None):
+def broadcast(message, exclude_conn=[]):
     global player_list
     with lock:  # 加锁保证线程安全
         for i in player_list:
