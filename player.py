@@ -24,9 +24,10 @@ def main():
     SERVER_HOST = input("请输入游戏服务器IP: ")
     if not SERVER_HOST:
         SERVER_HOST = SERVER_HOST_MAIN
-    SERVER_PORT = int(input("请输入游戏服务器端口(可不填): "))
+    SERVER_PORT = input("请输入游戏服务器端口(可不填): ")
     if not SERVER_PORT:
         SERVER_PORT = SERVER_PORT_MAIN
+    SERVER_PORT = int(SERVER_PORT)
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         # 连接服务端
