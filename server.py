@@ -571,6 +571,7 @@ def handle_client(conn, addr):
 
 
 def main():
+    global HOST, PORT, max_player_num
     """服务端主函数：启动监听，接收客户端连接"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -582,6 +583,9 @@ def main():
     print(f"等待玩家连接中...")
     print(f"=====================================")
 
+
+    max_player_num = int(input("输入玩家数量"))
+    print(f"设置最大玩家数量为：{max_player_num}\n等待连接中")
     while True:
         conn, addr = server_socket.accept()
         client_thread = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
@@ -597,7 +601,7 @@ BUFFER_SIZE = 1024          # 发送数据最大值
 ENCODING = "utf-8"          # 发送数据编码格式
 player_id_counter = 0       # 在创建玩家时计算玩家id
 lock = threading.Lock()     # 线程锁定义，保证多线程操作玩家字典时不冲突
-max_player_num = 1          # 设置最大游玩人数，达到最大游玩人数之后开始主程序执行
+max_player_num = 0          # 设置最大游玩人数，达到最大游玩人数之后开始主程序执行
 dead_search = 0             # 死者是否背发现，0-未被发现，1-已被发现
 player_list = []            # 全局玩家列表
 ticket = [0] * len(player_list)  # 投票计数列表，索引对应玩家id，值对应票数
