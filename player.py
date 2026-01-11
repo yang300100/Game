@@ -21,6 +21,8 @@ def recv_message(client_socket):
     exit()
 
 def main():
+    SERVER_HOST = input("请输入游戏服务器IP: ") or SERVER_HOST
+    SERVER_PORT = int(input("请输入游戏服务器端口(可不填): ")) or SERVER_PORT
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         # 连接服务端

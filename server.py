@@ -83,10 +83,13 @@ class Player:
             choose = get_message(self.id,"输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机")
 
     def move(self):
+        global location_list
         choose = ""
+        print("进入move函数")
         while choose not in location_list:
             try:
-                send_to_player(self.id,location_list)
+                send_to_player(self.id,f"可选地点：{location_list}\n")
+                print("已发送地点列表")
                 choose = get_message(self.id,f"{self.nickname}要去哪里？")
             except:
                 choose = ""
@@ -94,6 +97,12 @@ class Player:
         self.location = choose
         # 下面跟进距离计算代码
         get_distance(self)
+        time.sleep(20)
+        for i in self.distance:
+            pass
+            if i == 0 and i != self.id:
+                player_list[i].bag.append(Item(f"与{player_list[i].nickname}的相遇",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时,你与{player_list[i].nickname}在{choose}相遇了",get_time(),"情报"))
+                send_to_player(self.id,f"获得情报：与{player_list[i].nickname}的相遇，已添加至背包")
         #到达地点后，获取其中物品
         room_id = location_list.index(self.location)
         if not room_item[room_id]:
@@ -336,13 +345,13 @@ def activate(player):
         if player.life <=0:
             send_to_player(player.id,f"玩家{player.nickname}已经死亡，请等待游戏结束")
             continue
-        send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n1.去别处看看 2.查看手机 3.发动魔法")
+        send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n1.去别处看看 2.查看手机 \n3.发动魔法")
         if player.killer:
             send_to_player(player.id,"4.攻击（游戏开始的前一小时不能攻击）")
         choose = 0
         while choose not in [1,2,3,4]:
             try:
-                choose = int(get_message(player.id,f"玩家{player.nickname}进行操作"))
+                choose = int(get_message(player.id,f"请输入操作"))
             except:
                 choose = 0
                 send_to_player(player.id,"输入有误，重新输入")
@@ -388,6 +397,7 @@ def get_message(player_id,message=""):
     while True:
         recv_data = player.conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
         if recv_data:
+            print(f"[收到消息] 来自玩家【{player.nickname}】(ID:{player.id}) 的消息：{recv_data}")
             return recv_data
 
 
@@ -448,8 +458,12 @@ def handle_client(conn, addr):
         player.conn.send(f"加入成功！你的玩家ID：{player.id}\n当前在线人数：{len(player_list)}".encode(ENCODING))
         print(f"[系统] 新玩家连接：{addr} → 【{player.nickname}】(ID:{player.id})")
         send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}")
-        send_to_player(player.id,"-"*30)
-        print(get_message(0))
+        send_to_player(player.id,"\n"+"-"*30+"\n")
+        while len(player_list) < max_player_num:
+            pass
+        player_list[random.randint(0,max_player_num-1)].killer = 1  #随机分配魔女身份
+        broadcast("所有玩家已加入，一名玩家已成为魔女，游戏开始")
+        send_to_player(player.id,"\n"+"-"*30+"\n")
         game_start(player)
 
 
