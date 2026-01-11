@@ -456,9 +456,10 @@ def end_speak(player):
             send_to_player(i,"请等待其他玩家发言\n")
 
 def game_start(player):
+    global ticket,player_list
     print("-"*11,"游戏开始","-"*11,"\n")
     # 第一阶段-自由活动直到尸体被发现
-    activate(player,0)#参数0表示检测到尸体后跳出循环
+    activate(player,0)#参数0表示不指定次数，检测到尸体后跳出循环
     #尸体被发现，进入搜证阶段
     #第二阶段-搜证阶段，每人5次行动机会
     activate(player,5)#参数5表示指定行动次数
@@ -466,21 +467,37 @@ def game_start(player):
     #第三阶段-发言阶段，所有证据讨论完成后再进行一轮补充说明，最后结束进入投票
     broadcast("发言阶段结束，进入投票阶段\n")
     #第四阶段-投票阶段
-    
+    broadcast("请玩家进行投票，输入你要投票的玩家昵称\n")
+    answer = get_message(player.id,"投票开始，输入你要投票的玩家昵称：")
+    for i in player_list:
+        send_to_player(player.id,f"“{i.nickname}” ")
+    send_to_player(player.id,"\n")
+    while answer not in [i.nickname for i in player_list]:
+        get_message(player.id,"输入有误，重新输入\n")
+    ticket[[i.nickname for i in player_list].index(answer)] += 1
+    send_to_player(f"你投票给了玩家{answer}\n")
+    while sum(ticket) < len(player_list):
+        send_to_player(player.id,"请等待其他玩家投票\n")
+    max_vote = max(ticket)
+    if player_list[ticket.index(max_vote)].killer:
+        broadcast(f"玩家{player_list[ticket.index(max_vote)].nickname}被投票出局，魔女失败！游戏结束\n")
+    else:
+        broadcast(f"玩家{player_list[ticket.index(max_vote)].nickname}被投票出局，魔女获胜！游戏结束\n")
 
 
 
 
 def get_message(player_id,message=""):
     global player_list
-    player = player_list[player_id]
-    if message:
-        send_to_player(player.id,message)
-    while True:
-        recv_data = player.conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
-        if recv_data:
-            print(f"[收到消息] 来自玩家【{player.nickname}】(ID:{player.id}) 的消息：{recv_data}")
-            return recv_data
+    with lock:
+        player = player_list[player_id]
+        if message:
+            send_to_player(player.id,message)
+        while True:
+            recv_data = player.conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
+            if recv_data:
+                print(f"[收到消息] 来自玩家【{player.nickname}】(ID:{player.id}) 的消息：{recv_data}")
+                return recv_data
 
 
 def broadcast(message, exclude_conn=[]):
@@ -583,6 +600,7 @@ lock = threading.Lock()     # 线程锁定义，保证多线程操作玩家字�
 max_player_num = 1          # 设置最大游玩人数，达到最大游玩人数之后开始主程序执行
 dead_search = 0             # 死者是否背发现，0-未被发现，1-已被发现
 player_list = []            # 全局玩家列表
+ticket = [0] * len(player_list)  # 投票计数列表，索引对应玩家id，值对应票数
 location_list = ["医务室","淋浴房","日光房","杂物处","中庭","接客室","女厕","会客厅","玄关大厅","审判庭入口过道",
                 "食堂","厨房","审判庭","牢房","焚烧炉","惩罚室","娱乐室","工作室","2F大厅","图书室"]  # 地点列表，用于计算对应地点之间的距离
 p_list = [Shiro, Person2, Person3, Person4] #人物类存储列表

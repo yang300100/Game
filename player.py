@@ -37,17 +37,16 @@ def main():
         print(f"服务器地址：{SERVER_HOST}:{SERVER_PORT}")
         print(f"提示：输入内容按【回车】发送，断开连接直接关闭窗口")
         print("=====================================")
-
+        
         recv_thread = threading.Thread(target=recv_message, args=(client_socket,), daemon=True)
         recv_thread.start()
-
+        
         print("选项前有数字时填写选项前的数字，选项前无数字时直接填写选项")
-
+        
         while True:
             user_input = input()
             if user_input.strip():  # 过滤空输入，避免发送空消息
                 client_socket.send(user_input.encode(ENCODING))
-
     except ConnectionRefusedError:
         # 连接失败的常见原因，一站式排查
         print("连接游戏服务器失败！请检查：")
