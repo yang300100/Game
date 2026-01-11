@@ -95,27 +95,26 @@ class Player:
             except:
                 choose = ""
                 send_to_player(self.id,"输入错误，重新输入\n")
-
-        send_to_player(self.id,f"正在前往{choose}的路上...\n")
-        time.sleep(5)
+        
+        for i in range(5):
+            send_to_player(self.id,f"\r正在前往{choose}的路上："+ "█" * (i + 1) * (20 // 5) + "░" * (20 - (i + 1) * (20 // 5)))
+            time.sleep(1)
         self.location = choose
         get_distance(self)
         send_to_player(self.id,f"已到达{choose}\n")
-
-        for i in self.distance: # 进入房间时的证据获取
-            if i == 0 and i != self.id:
-                player_list[i].bag.append(Item(f"与{player_list[i].nickname}的相遇",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时,你与{player_list[i].nickname}在{choose}相遇了",get_time(),"情报"))
-                send_to_player(self.id,f"获得情报：与{player_list[i].nickname}的相遇，已添加至背包\n")
+        seen_people = set()
         
         send_to_player(self.id,f"正在搜寻房间中的物品...（搜寻物品时不会注意到外界情况）\n")
         for i in range(20):
-            send_to_player(self.id,"搜索进度："+ "█" * (i + 1) + "░" * (20 - i))
+            send_to_player(self.id,"\r搜索进度："+ "█" * (i + 1) * (20 // 20) + "░" * (20 - (i + 1) * (20 // 20)))
             time.sleep(1)
-        send_to_player(self.id,"\n")
-        for i in self.distance: # 搜寻结束后的证据获取 
-            if i == 0 and i != self.id:
-                player_list[i].bag.append(Item(f"与{player_list[i].nickname}的相遇",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时,你与{player_list[i].nickname}在{choose}相遇了",get_time(),"情报"))
-                send_to_player(self.id,f"获得情报：与{player_list[i].nickname}的相遇，已添加至背包\n")
+        send_to_player(self.id,"\n搜寻完成！\n")
+        for i in range(len(self.distance)):  
+            if self.distance[i] == 0 and i != self.id and i not in seen_people:
+                self.bag.append(Item(f"与{player_list[i].nickname}的相遇",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时,你与{player_list[i].nickname}在{choose}相遇了",get_time(),"情报"))
+                send_to_player(self.id,f"你在{choose}遇到了{player_list[i].nickname}\n获得情报：与{player_list[i].nickname}的相遇，已添加至背包\n")
+                seen_people.add(i)
+            time.sleep(1)
         
         #到达地点后，获取其中物品
         room_id = location_list.index(self.location)
@@ -123,10 +122,10 @@ class Player:
             send_to_player(self.id,f"你在{self.location}没有发现任何物品\n")
             return
         random_item = random.choice(room_item[room_id])
-        if random_item.type == "物品":
+        if random_item.type == "道具":
             self.bag.append(random_item)
             room_item[room_id].remove(random_item)
-            send_to_player(self.id,f"你在{self.location}发现了物品：“{random_item.name}”已添加至背包\n")
+            send_to_player(self.id,f"你在{self.location}发现了道具：“{random_item.name}”已添加至背包\n")
         else:
             self.bag.append(random_item)
             send_to_player(self.id,f"你在{self.location}发现了情报：“{random_item.name}”已添加至背包\n")
@@ -352,10 +351,10 @@ def create_player(player_id,player_name,conn,player_num):
 
 def activate(player,n):
     global player_list,dead_search  #活动函数
-    if n:
+    if n != 0:
         for i in range(n):#5次搜证机会,搜证期间不可攻击
             get_distance(player)
-            send_to_player(player.id,"-"*10,"\n")
+            send_to_player(player.id,"-"*10 + "\n")
             if player.life <=0:
                 send_to_player(player.id,f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
                 continue
@@ -363,7 +362,7 @@ def activate(player,n):
             choose = 0
             while choose not in [1,2,3]:
                 try:
-                    choose = int(get_message(player.id,f"请输入操作\n"))
+                    choose = int(get_message(player.id,f"\n请输入操作\n"))
                 except:
                     choose = 0
                     send_to_player(player.id,"输入有误，重新输入\n")
@@ -380,6 +379,7 @@ def activate(player,n):
         while not dead_search:
             get_distance(player)
             send_to_player(player.id,"-"*10)
+            show_player(player)
             if player.life <=0:
                 send_to_player(player.id,f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
                 continue
@@ -389,7 +389,7 @@ def activate(player,n):
             choose = 0
             while choose not in [1,2,3,4]:
                 try:
-                    choose = int(get_message(player.id,f"请输入操作\n"))
+                    choose = int(get_message(player.id,f"\n请输入操作\n"))
                 except:
                     choose = 0
                     send_to_player(player.id,"输入有误，重新输入\n")
@@ -404,10 +404,11 @@ def activate(player,n):
                     player.attack()
             get_distance(player)
             for i in player.distance:
-                if not i and player_list[i].life == 0 and not player.killer:
+                if not i and player_list[i].life == 1 and not player.killer:
                     dead_search = 1 #尸体被发现，跳出循环
                     send_to_player(player.id,"你发现了一具尸体，进入搜证阶段\n")
                     broadcast(f"玩家{player.nickname}在{player.location}发现了一具尸体，进入搜证阶段\n")
+                    break
 
 def end_speak(player):
     global player_list
@@ -488,16 +489,15 @@ def game_start(player):
 
 
 def get_message(player_id,message=""):
-    global player_list
-    with lock:
-        player = player_list[player_id]
-        if message:
-            send_to_player(player.id,message)
-        while True:
-            recv_data = player.conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
-            if recv_data:
-                print(f"[收到消息] 来自玩家【{player.nickname}】(ID:{player.id}) 的消息：{recv_data}")
-                return recv_data
+    global player_list   
+    player = player_list[player_id]
+    if message:
+        send_to_player(player.id,message)
+    while True:
+        recv_data = player.conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
+        if recv_data:
+            print(f"[收到消息] 来自玩家【{player.nickname}】(ID:{player.id}) 的消息：{recv_data}")
+            return recv_data
 
 
 def broadcast(message, exclude_conn=[]):
@@ -556,12 +556,12 @@ def handle_client(conn, addr):
         player.conn.send(f"加入成功！你的玩家ID：{player.id}\n当前在线人数：{len(player_list)}\n".encode(ENCODING))
         print(f"[系统] 新玩家连接：{addr} → 【{player.nickname}】(ID:{player.id})")
         send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
-        send_to_player(player.id,"\n"+"-"*30+"\n")
+        send_to_player(player.id,"-"*30+"\n")
         while len(player_list) < max_player_num:
             pass
         player_list[random.randint(0,max_player_num-1)].killer = 1  #随机分配魔女身份
-        broadcast("所有玩家已加入，一名玩家已成为魔女，游戏开始\n")
-        send_to_player(player.id,"\n"+"-"*30+"\n")
+        send_to_player(player.id,"所有玩家已加入，一名玩家已成为魔女，游戏开始\n")
+        send_to_player(player.id,"-"*30+"\n")
         game_start(player)
     except Exception as e:
         print(f"[异常-在handle_cilent函数中] 玩家【{player_name}】异常：{e}")
@@ -592,7 +592,16 @@ def main():
         client_thread.start()
 
 
-
+def show_player(player):
+    print(f"玩家ID：{player.id}")
+    print(f"玩家昵称：{player.nickname}")
+    print(f"玩家位置：{player.location}")
+    print(f"玩家生命状态：{'存活' if player.life == 1 else '死亡'}")
+    print(f"玩家是否为魔女：{'是' if player.killer == 1 else '否'}")
+    print(f"玩家背包物品：")
+    for item in player.bag:
+        print(f"  - {item.name}: {item.describe} (获取时间：{item.get_time}, 类型：{item.type})")
+    print(f"玩家距离列表：{player.distance}")
 
 #全局变量：
 HOST = "192.168.16.112"     # 服务器IP地址
