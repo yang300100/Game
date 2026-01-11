@@ -409,6 +409,52 @@ def activate(player,n):
                     send_to_player(player.id,"你发现了一具尸体，进入搜证阶段\n")
                     broadcast(f"玩家{player.nickname}在{player.location}发现了一具尸体，进入搜证阶段\n")
 
+def end_speak(player):
+    global player_list
+    end_speech = 0
+    while end_speech < len(player_list):
+        end_speech = 0
+        for i in range(len(player_list)):
+            if  player_list[i].life == 0:
+                send_to_player(i,"你已死亡，跳过发言环节\n")
+                end_speech += 1
+                continue
+            if i == player.id and player.bag:
+                item_list = []
+                send_to_player(i,"请玩家选择你要提交的证据，随后发言：\n")
+                for j in player.bag:
+                    send_to_player(i,f"“{j.name}” ")
+                    item_list.append(j.name)
+                send_to_player(i,"\n")
+                speech = get_message(i,"请输入你要提交的证据,输入其他跳过发言：\n")
+                if speech in item_list:
+                    broadcast(f"玩家{player_list[i].nickname}提交了证据：“{speech}”\n")
+                    it = player_list[i].bag[item_list.index(speech)]#取出物品对象
+                    broadcast(f"名称：{it.name}\n描述：{it.describe}\n获取时间：{it.get_time[1]}月{it.get_time[2]}日 {it.get_time[3]}:{it.get_time[4]}\n类型：{it.type}\n")
+                    player_list[i].bag.remove(item_list.index(speech))
+                    message = get_message(i,"请输入你的发言内容:\n")
+                    broadcast(f"{player_list[i].nickname}：{message}\n")
+                    broadcast("-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
+                else:
+                    send_to_player(i,"跳过发言环节\n")
+                    end_speech += 1
+            if i == player.id and not player.bag:
+                send_to_player(i,"你没有证据可提交，跳过发言环节\n")
+                end_speech += 1
+            elif i != player.id:
+                send_to_player(i,"请等待其他玩家发言\n")
+    broadcast("所有玩家全部跳过发言，进入总结阶段，总结阶段中每名玩家只能发言一次\n")
+    for i in range(len(player_list)):
+        if player_list[i].life == 0:
+            send_to_player(i,"你已死亡，跳过发言环节\n")
+            continue
+        if i == player.id:
+            message = get_message(i,"请输入你的总结发言内容:\n")
+            broadcast(f"{player_list[i].nickname}：{message}\n")
+            broadcast("-"*10 +f"{player.nickname}总结发言结束"+"-"*10+"\n")
+        elif i != player.id:
+            send_to_player(i,"请等待其他玩家发言\n")
+
 def game_start(player):
     print("-"*11,"游戏开始","-"*11,"\n")
     # 第一阶段-自由活动直到尸体被发现
@@ -418,18 +464,9 @@ def game_start(player):
     activate(player,5)#参数5表示指定行动次数
     broadcast("搜证阶段结束，进入发言阶段\n")
     #第三阶段-发言阶段，所有证据讨论完成后再进行一轮补充说明，最后结束进入投票
-    while True:
-        for i in range(len(player_list)):
-            if  player_list[i].life == 0:
-                send_to_player(i,"你已死亡，跳过发言环节\n")
-                continue
-            if i == player.id and player.bag:
-                send_to_player(i,"请玩家提交证据后发言\n")
-            while speech != "结束":
-                broadcast(f"玩家{player_list[i].nickname}发言：{speech}\n")
-                speech = get_message(i)
-            send_to_player(i,"发言结束，等待其他玩家发言\n")
+    broadcast("发言阶段结束，进入投票阶段\n")
     #第四阶段-投票阶段
+    
 
 
 
