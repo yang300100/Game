@@ -13,7 +13,7 @@ def recv_message(client_socket):
             if not msg:
                 print("\n与游戏服务器断开连接！")
                 break
-            print(f"{msg}")
+            print(f"{msg}",end="")
         except Exception as e:
             print(f"\n网络异常，连接断开：{e}")
             break
