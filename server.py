@@ -541,15 +541,13 @@ def handle_client(conn, addr):
     try:
         conn.send("请输入你的游戏昵称：\n".encode(ENCODING))
         player_name = conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
-        while not player_name:  # 昵称不能为空
+        while not player_name:
             conn.send("昵称不能为空！请重新输入：\n".encode(ENCODING))
             player_name = conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
         with lock:
             create_player(player_id_counter,player_name,conn,max_player_num)
             player_id_counter += 1
-        
-        print(player_list)
-        player = player_list[player_id_counter-1]
+            player = player_list[player_id_counter-1]
         
         welcome_msg = f"[系统公告] 玩家【{player.nickname}】(ID:{player.id}) 加入游戏！\n"
         broadcast(welcome_msg,[0])
@@ -580,6 +578,7 @@ def main():
     print(f"=====================================")
     print(f"游戏通信服务端已启动")
     print(f"监听地址：{HOST}:{PORT}")
+    print("本机ip:",socket.gethostbyname(socket.gethostname()))
     print(f"等待玩家连接中...")
     print(f"=====================================")
 
@@ -604,7 +603,7 @@ def show_player(player):
     print(f"玩家距离列表：{player.distance}")
 
 #全局变量：
-HOST = "192.168.16.112"     # 服务器IP地址
+HOST = "0.0.0.0"     # 服务器IP地址
 PORT = 9999                 # 服务器端口
 BUFFER_SIZE = 1024          # 发送数据最大值
 ENCODING = "utf-8"          # 发送数据编码格式
