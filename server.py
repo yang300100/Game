@@ -3,7 +3,6 @@ import time
 import socket
 import threading
 
-
 class Player:
     def __init__(self,player_id,conn,player_num):
         self.conn = conn  #玩家连接socket
@@ -26,7 +25,7 @@ class Player:
         for i in self.bag:
             send_to_player(self.id,f"“{i.name}” ")
         send_to_player(self.id,"\n")
-        #新消息检测👇
+        #新消息检测
         obj_send = 0
         for i in self.message_len:
             if i:
@@ -39,12 +38,15 @@ class Player:
                     send_to_player(self.id,self.wechat[obj_send][-i:])
                     self.message_len[obj_send] = 0
             obj_send += 1
-        #消息发送部分👇
+        #消息发送部分
         nickname_list = []
+        send_to_player(self.id,"可聊天对象：\n")
         for i in player_list:
+            if i.id == self.id:
+                continue
             send_to_player(self.id,i.nickname+" ")
             nickname_list.append(i.nickname)
-        send_to_player(self.id,"公共群聊")
+        send_to_player(self.id,"公共群聊\n")
         nickname_list.append("公共群聊")
         send_to_player(self.id,"")
         choose = get_message(self.id,"输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机\n")
@@ -81,7 +83,7 @@ class Player:
                         send_to_player(self.id,inp+f":{self.nickname}\n")
                         inp = get_message(self.id)
             choose = get_message(self.id,"输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机\n")
-
+    
     def move(self):
         global location_list
         choose = ""
@@ -115,7 +117,6 @@ class Player:
                 send_to_player(self.id,f"你在{choose}遇到了{player_list[i].nickname}\n获得情报：与{player_list[i].nickname}的相遇，已添加至背包\n")
                 seen_people.add(i)
             time.sleep(1)
-        
         #到达地点后，获取其中物品
         room_id = location_list.index(self.location)
         if not room_item[room_id]:
@@ -129,7 +130,7 @@ class Player:
         else:
             self.bag.append(random_item)
             send_to_player(self.id,f"你在{self.location}发现了情报：“{random_item.name}”已添加至背包\n")
-
+    
     def attack(self):
         global time_start, player_list, time_real_start
         if self.killer == 0 or int(time.time()-time_real_start) < 60:  # 开局前一小时以及普通人不能攻击
@@ -293,11 +294,11 @@ class Person4(Player):
         pass
 
 def get_distance(player):
-    global player_list,map_dict,map_len
-    start_address = map_dict[player.location]
+    global player_list,map_len,location_list
+    start_address = location_list.index(player.location)
     distance = []
     for i in player_list:
-        end_address = map_dict[i.location]
+        end_address = location_list.index(i.location)
         distance.append(map_len[start_address][end_address])
     player.distance = distance
     return distance
@@ -378,14 +379,14 @@ def activate(player,n):
     else:
         while not dead_search:
             get_distance(player)
-            send_to_player(player.id,"-"*10)
+            send_to_player(player.id,"-"*30 + "\n")
             show_player(player)
             if player.life <=0:
                 send_to_player(player.id,f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
                 continue
             send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n1.去别处看看 2.查看手机 \n3.发动魔法 ")
             if player.killer:
-                send_to_player(player.id,"4.攻击（游戏开始的前一小时不能攻击）\n")
+                send_to_player(player.id,"4.攻击（游戏开始的前一小时不能攻击）")
             choose = 0
             while choose not in [1,2,3,4]:
                 try:
@@ -466,6 +467,7 @@ def game_start(player):
     activate(player,5)#参数5表示指定行动次数
     broadcast("搜证阶段结束，进入发言阶段\n")
     #第三阶段-发言阶段，所有证据讨论完成后再进行一轮补充说明，最后结束进入投票
+    end_speak(player)
     broadcast("发言阶段结束，进入投票阶段\n")
     #第四阶段-投票阶段
     broadcast("请玩家进行投票，输入你要投票的玩家昵称\n")
@@ -484,8 +486,6 @@ def game_start(player):
         broadcast(f"玩家{player_list[ticket.index(max_vote)].nickname}被投票出局，魔女失败！游戏结束\n")
     else:
         broadcast(f"玩家{player_list[ticket.index(max_vote)].nickname}被投票出局，魔女获胜！游戏结束\n")
-
-
 
 
 def get_message(player_id,message=""):
@@ -567,7 +567,6 @@ def handle_client(conn, addr):
         if conn:
             remove_player_by_conn(conn)
 
-
 def main():
     global HOST, PORT, max_player_num
     """服务端主函数：启动监听，接收客户端连接"""
@@ -592,6 +591,7 @@ def main():
 
 
 def show_player(player):
+    print("-"*10+"玩家信息"+"-"*10)
     print(f"玩家ID：{player.id}")
     print(f"玩家昵称：{player.nickname}")
     print(f"玩家位置：{player.location}")
@@ -603,24 +603,23 @@ def show_player(player):
     print(f"玩家距离列表：{player.distance}")
 
 #全局变量：
-HOST = "0.0.0.0"     # 服务器IP地址
-PORT = 9999                 # 服务器端口
-BUFFER_SIZE = 1024          # 发送数据最大值
-ENCODING = "utf-8"          # 发送数据编码格式
-player_id_counter = 0       # 在创建玩家时计算玩家id
-lock = threading.Lock()     # 线程锁定义，保证多线程操作玩家字典时不冲突
-max_player_num = 0          # 设置最大游玩人数，达到最大游玩人数之后开始主程序执行
-dead_search = 0             # 死者是否背发现，0-未被发现，1-已被发现
-player_list = []            # 全局玩家列表
-ticket = [0] * len(player_list)  # 投票计数列表，索引对应玩家id，值对应票数
+HOST = "0.0.0.0"                # 服务器IP地址
+PORT = 9999                     # 服务器端口
+BUFFER_SIZE = 1024              # 发送数据最大值
+ENCODING = "utf-8"              # 发送数据编码格式
+player_id_counter = 0           # 在创建玩家时计算玩家id
+lock = threading.Lock()         # 线程锁定义，保证多线程操作玩家字典时不冲突
+max_player_num = 0              # 设置最大游玩人数，达到最大游玩人数之后开始主程序执行
+dead_search = 0                 # 死者是否背发现，0-未被发现，1-已被发现
+player_list = []                # 全局玩家列表
+ticket = [0] * len(player_list) # 投票计数列表，索引对应玩家id，值对应票数
 location_list = ["医务室","淋浴房","日光房","杂物处","中庭","接客室","女厕","会客厅","玄关大厅","审判庭入口过道",
                 "食堂","厨房","审判庭","牢房","焚烧炉","惩罚室","娱乐室","工作室","2F大厅","图书室"]  # 地点列表，用于计算对应地点之间的距离
 p_list = [Shiro, Person2, Person3, Person4] #人物类存储列表
 p_name_list = ["Shiro", "Person2", "Person3", "Person4"]    # 人物类名称列表
-time_start = [2026,1,6,9,00,0]          # 游戏的起始游戏时间
-time_real_start = time.time()           # 获取真实时间戳，用于计算时间流逝
-map_dict = {"医务室":0, "淋浴房":1, "日光房":2, "杂物处":3, "中庭":4, "接客室":5, "女厕":6, "会客厅":7, "玄关大厅":8, "审判庭入口过道":9,
-            "食堂": 10, "厨房":11, "审判庭":12, "牢房":13, "焚烧炉":14, "惩罚室":15, "娱乐室":16, "工作室":17, "2F大厅":18, "图书室":19}  # 地点字典，似乎没啥用
+time_start = [2026,1,6,9,00,0]  # 游戏的起始游戏时间
+time_real_start = time.time()   # 获取真实时间戳，用于计算时间流逝
+
 map_len = [
     # A  B  C  D  E  F  G  H  I  J  K  L  M  N  O  P  Q  R  S  T  楼层间距离20
     [ 0,20,15, 5,20,25,15,20,25,30,35,40,40,50,60,60,50,50,45,50], #A
