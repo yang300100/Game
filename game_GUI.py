@@ -4,10 +4,6 @@ import socket
 import threading
 import os  # 图片文件存在性检查，增强容错
 
-# =====================================================
-# ================= 【全局配色/尺寸配置区 - 只改这里即可】 =================
-# =====================================================
-# ------------------- 网络配置项（默认值，可通过设置服务器弹窗修改） -------------------
 HOST = "127.0.0.1"
 PORT = 9999
 BUFFER_SIZE = 1024
@@ -68,10 +64,6 @@ MAP_PATHS = {
     "地下一层地图": "map_floorF1.png"
 }
 
-
-# =====================================================
-# ================= 业务代码开始（修改处均有标注，其余无需修改） =================
-# =====================================================
 class GameClientGUI:
     def __init__(self, root):
         self.root = root
@@ -111,28 +103,28 @@ class GameClientGUI:
         self.style.configure('Main.TFrame', background=COLOR_FRAME_ALL_BG)
         # 2. 带标题的面板 (消息/地图)
         self.style.configure('Panel.TLabelframe', background=COLOR_FRAME_ALL_BG, bordercolor=COLOR_FRAME_BORDER,
-                             borderwidth=2)
+                            borderwidth=2)
         self.style.configure('Panel.TLabelframe.Label', background=COLOR_FRAME_ALL_BG,
-                             foreground=COLOR_TEXT_LABEL_TITLE, font=FONT_MAIN)
+                            foreground=COLOR_TEXT_LABEL_TITLE, font=FONT_MAIN)
         # 3. 按钮样式 - 悬浮变色
         self.style.configure('Main.TButton', background=COLOR_BTN_NORMAL_BG, foreground=COLOR_TEXT_BUTTON_NORMAL,
-                             font=FONT_MAIN, padding=5)
+                            font=FONT_MAIN, padding=5)
         self.style.map('Main.TButton', background=[('active', COLOR_BTN_HOVER_BG)],
-                       foreground=[('active', COLOR_TEXT_BUTTON_HOVER)])
+                        foreground=[('active', COLOR_TEXT_BUTTON_HOVER)])
         # 4. 状态栏标签样式
         self.style.configure('Status.TLabel', background=COLOR_ROOT_BG, font=FONT_STATUS)
         # 5. 普通文字标签样式
         self.style.configure('Text.TLabel', background=COLOR_FRAME_ALL_BG, foreground=COLOR_TEXT_LABEL_TITLE,
-                             font=FONT_MAIN)
+                            font=FONT_MAIN)
         # 6. 输入框样式
         self.style.configure('Main.TEntry', fieldbackground=COLOR_ENTRY_BG, foreground=COLOR_ENTRY_FG, font=FONT_MAIN)
         self.style.map('Main.TEntry', selectbackground=[('active', COLOR_ENTRY_SELECT_BG)])
         # 7. 地图选项卡样式
         self.style.configure('Map.TNotebook', background=COLOR_FRAME_ALL_BG, borderwidth=0)
         self.style.configure('Map.TNotebook.Tab', background=COLOR_TAB_NORMAL_BG, foreground=COLOR_TEXT_TAB_TITLE,
-                             font=FONT_TAB_TITLE, padding=[10, 2])
+                            font=FONT_TAB_TITLE, padding=[10, 2])
         self.style.map('Map.TNotebook.Tab', background=[('selected', COLOR_TAB_SELECT_BG)],
-                       foreground=[('selected', COLOR_TEXT_TAB_TITLE)])
+                        foreground=[('selected', COLOR_TEXT_TAB_TITLE)])
 
     def _create_widgets(self):
         """✅ 修复所有组件渲染 - 消息面板恢复+地图恢复"""
@@ -140,12 +132,12 @@ class GameClientGUI:
         self.status_frame = ttk.Frame(self.root, style='Main.TFrame')
         self.status_frame.pack(fill=tk.X, padx=10, pady=5)
         self.status_label = ttk.Label(self.status_frame, text="未设置服务器 | 等待配置...",
-                                      foreground=COLOR_TEXT_STATUS_DISCONNECT, style='Status.TLabel')
+                                    foreground=COLOR_TEXT_STATUS_DISCONNECT, style='Status.TLabel')
         self.status_label.pack(side=tk.LEFT)
 
         # ========== 修改按钮：连接服务器 → 设置服务器（核心修改2） ==========
         self.config_btn = ttk.Button(self.status_frame, text="设置服务器", command=self.config_server,
-                                     style='Main.TButton')
+                                    style='Main.TButton')
         self.config_btn.pack(side=tk.RIGHT, padx=5)
         self.map_btn = ttk.Button(self.status_frame, text="显示地图", command=self.toggle_map, style='Main.TButton')
         self.map_btn.pack(side=tk.RIGHT)

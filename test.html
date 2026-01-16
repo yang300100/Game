@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>推理游戏 - 网页版客户端</title>
+    <style>
+        /* 全局样式重置 + 统一字体 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "SimSun", 宋体, serif;
+        }
+
+        body {
+            background-color: #EDFCF3;
+            /* COLOR_ROOT_BG 主背景色 */
+            overflow: hidden;
+            padding: 10px;
+        }
+
+        /* ===== 全局配色常量（完全保留原代码）===== */
+        :root {
+            --COLOR_ROOT_BG: #EDFCF3;
+            --COLOR_FRAME_ALL_BG: #EDFCF3;
+            --COLOR_MSG_PANEL_BG: #EDFCF3;
+            --COLOR_MSG_PANEL_FG: #B890D4;
+
+            --COLOR_TEXT_STATUS_DISCONNECT: #E785A6;
+            --COLOR_TEXT_STATUS_CONNECT: #8BC8E8;
+            --COLOR_TEXT_LABEL_TITLE: #5CA4D8;
+            --COLOR_TEXT_TAB_TITLE: #B890D4;
+            --COLOR_TEXT_BUTTON_NORMAL: #333333;
+            --COLOR_TEXT_BUTTON_HOVER: #FFFFFF;
+
+            --COLOR_MSG_SELF: #5CA4D8;
+            --COLOR_MSG_SYSTEM: #9C6CD3;
+            --COLOR_MSG_SUCCESS: #64B89C;
+            --COLOR_MSG_ERROR: #E76474;
+            --COLOR_MSG_TIP: #E8B569;
+            --COLOR_MSG_DEFAULT: #555555;
+
+            --COLOR_BTN_NORMAL_BG: #D9F1FC;
+            --COLOR_BTN_HOVER_BG: #8BC8E8;
+            --COLOR_ENTRY_BG: #FFFFFF;
+            --COLOR_ENTRY_FG: #333333;
+            --COLOR_ENTRY_SELECT_BG: #C8E2F0;
+            --COLOR_FRAME_BORDER: #8BC8E8;
+            --COLOR_SCROLL_BAR_BG: #E6F4EF;
+            --COLOR_SCROLL_BAR_ACTIVE: #5CA4D8;
+            --COLOR_TAB_SELECT_BG: #C8E2F0;
+            --COLOR_TAB_NORMAL_BG: #E6F4EF;
+
+            /* 新增：设计优化变量 */
+            --BORDER_RADIUS: 6px;
+            --SHADOW_SOFT: 0 2px 4px rgba(140, 200, 232, 0.2);
+            --GAP_SMALL: 5px;
+            --GAP_MEDIUM: 8px;
+        }
+
+        /* ===== 顶部状态栏（优化布局+质感）===== */
+        .status-frame {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background-color: var(--COLOR_ROOT_BG);
+            border-radius: var(--BORDER_RADIUS);
+            box-shadow: var(--SHADOW_SOFT);
+            margin-bottom: var(--GAP_MEDIUM);
+        }
+
+        .status-label {
+            font-size: 10px;
+            color: var(--COLOR_TEXT_STATUS_DISCONNECT);
+            line-height: 1;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: var(--GAP_SMALL);
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: var(--BORDER_RADIUS);
+            background-color: var(--COLOR_BTN_NORMAL_BG);
+            color: var(--COLOR_TEXT_BUTTON_NORMAL);
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .btn:hover {
+            background-color: var(--COLOR_BTN_HOVER_BG);
+            color: var(--COLOR_TEXT_BUTTON_HOVER);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(140, 200, 232, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        /* ===== 主内容区域（优化弹性布局）===== */
+        .main-container {
+            width: 100%;
+            height: calc(100vh - 120px);
+            display: flex;
+            gap: var(--GAP_MEDIUM);
+        }
+
+        .panel {
+            border: 1px solid var(--COLOR_FRAME_BORDER);
+            border-radius: var(--BORDER_RADIUS);
+            background-color: var(--COLOR_FRAME_ALL_BG);
+            padding: 10px;
+            box-shadow: var(--SHADOW_SOFT);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: var(--GAP_SMALL);
+        }
+
+        .panel-title {
+            font-size: 11px;
+            color: var(--COLOR_TEXT_LABEL_TITLE);
+            font-weight: normal;
+            line-height: 1;
+            padding-left: 4px;
+        }
+
+        .panel-icon {
+            width: 16px;
+            height: 16px;
+            background-color: var(--COLOR_TEXT_LABEL_TITLE);
+            border-radius: 3px;
+            margin-right: 6px;
+        }
+
+        /* ===== 消息面板（优化滚动+内边距）===== */
+        .msg-panel-wrapper {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .msg-panel {
+            width: 100%;
+            height: 100%;
+            background-color: var(--COLOR_MSG_PANEL_BG);
+            color: var(--COLOR_MSG_PANEL_FG);
+            font-size: 11px;
+            padding: 8px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            border-radius: calc(var(--BORDER_RADIUS) - 2px);
+            border: 1px solid rgba(140, 200, 232, 0.3);
+        }
+
+        /* 消息面板滚动条美化（更细腻） */
+        .msg-panel::-webkit-scrollbar {
+            width: 6px;
+            background-color: var(--COLOR_SCROLL_BAR_BG);
+            border-radius: 3px;
+        }
+
+        .msg-panel::-webkit-scrollbar-thumb {
+            background-color: var(--COLOR_SCROLL_BAR_ACTIVE);
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+
+        .msg-panel::-webkit-scrollbar-thumb:hover {
+            background-color: #4A99C8;
+        }
+
+        /* ===== 地图面板（优化选项卡+圆角）===== */
+        .map-panel-wrapper {
+            width: 820px;
+            display: none;
+        }
+
+        .map-notebook {
+            width: 100%;
+            height: 100%;
+            background-color: var(--COLOR_FRAME_ALL_BG);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tab-header {
+            display: flex;
+            gap: 4px;
+            background-color: var(--COLOR_FRAME_ALL_BG);
+            margin-bottom: 8px;
+            padding-left: 2px;
+        }
+
+        .tab-item {
+            padding: 4px 12px;
+            background-color: var(--COLOR_TAB_NORMAL_BG);
+            color: var(--COLOR_TEXT_TAB_TITLE);
+            font-size: 10px;
+            cursor: pointer;
+            border-radius: var(--BORDER_RADIUS) var(--BORDER_RADIUS) 0 0;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .tab-item:hover {
+            background-color: #D8EAF5;
+        }
+
+        .tab-item.active {
+            background-color: var(--COLOR_TAB_SELECT_BG);
+            border: 1px solid var(--COLOR_FRAME_BORDER);
+            border-bottom: none;
+            position: relative;
+            bottom: -1px;
+        }
+
+        .tab-content {
+            width: 100%;
+            height: calc(100% - 28px);
+            border: 1px solid var(--COLOR_FRAME_BORDER);
+            background-color: var(--COLOR_FRAME_ALL_BG);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--COLOR_MSG_ERROR);
+            font-size: 11px;
+            border-radius: calc(var(--BORDER_RADIUS) - 2px);
+            overflow: hidden;
+        }
+
+        .map-img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        /* ===== 输入区域（优化高度+对齐）===== */
+        .input-frame {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background-color: var(--COLOR_ROOT_BG);
+            border-radius: var(--BORDER_RADIUS);
+            box-shadow: var(--SHADOW_SOFT);
+            margin-top: var(--GAP_MEDIUM);
+            gap: 8px;
+        }
+
+        .input-label {
+            font-size: 11px;
+            color: var(--COLOR_TEXT_LABEL_TITLE);
+            white-space: nowrap;
+        }
+
+        .input-entry {
+            flex: 1;
+            height: 34px;
+            padding: 0 10px;
+            border: 1px solid var(--COLOR_FRAME_BORDER);
+            border-radius: var(--BORDER_RADIUS);
+            background-color: var(--COLOR_ENTRY_BG);
+            color: var(--COLOR_ENTRY_FG);
+            font-size: 11px;
+            transition: border-color 0.2s;
+        }
+
+        .input-entry:focus {
+            outline: none;
+            border-color: #6BB8E8;
+            box-shadow: 0 0 0 2px rgba(140, 200, 232, 0.2);
+        }
+
+        .input-entry::selection {
+            background-color: var(--COLOR_ENTRY_SELECT_BG);
+        }
+
+        .send-btn {
+            padding: 8px 16px;
+            border-radius: var(--BORDER_RADIUS);
+        }
+
+        /* ===== 服务器配置弹窗（优化样式）===== */
+        .modal-mask {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.3);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-container {
+            width: 320px;
+            background-color: var(--COLOR_ROOT_BG);
+            border-radius: var(--BORDER_RADIUS);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            padding: 20px;
+        }
+
+        .modal-title {
+            font-size: 14px;
+            color: var(--COLOR_TEXT_LABEL_TITLE);
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .modal-form-item {
+            margin-bottom: 12px;
+        }
+
+        .modal-form-label {
+            font-size: 11px;
+            color: var(--COLOR_TEXT_LABEL_TITLE);
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .modal-form-input {
+            width: 100%;
+            height: 32px;
+            padding: 0 8px;
+            border: 1px solid var(--COLOR_FRAME_BORDER);
+            border-radius: var(--BORDER_RADIUS);
+            background-color: var(--COLOR_ENTRY_BG);
+            color: var(--COLOR_ENTRY_FG);
+        }
+
+        .modal-btn-group {
+            display: flex;
+            justify-content: center;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 顶部状态栏 -->
+    <div class="status-frame">
+        <div class="status-label" id="statusLabel">未设置服务器 | 等待配置...</div>
+        <div class="btn-group">
+            <button class="btn" id="configBtn">设置服务器</button>
+            <button class="btn" id="mapBtn">显示地图</button>
+        </div>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div class="main-container">
+        <!-- 消息面板 -->
+        <div class="panel msg-panel-wrapper">
+            <div class="panel-header">
+                <div class="panel-icon"></div>
+                <h3 class="panel-title">游戏消息面板</h3>
+            </div>
+            <div class="msg-panel" id="msgPanel"></div>
+        </div>
+
+        <!-- 地图面板 -->
+        <div class="panel map-panel-wrapper" id="mapPanel">
+            <div class="panel-header">
+                <div class="panel-icon"></div>
+                <h3 class="panel-title">楼层地图</h3>
+            </div>
+            <div class="map-notebook" id="mapNotebook">
+                <div class="tab-header" id="tabHeader">
+                    <div class="tab-item active" data-tab="floor1">一层地图</div>
+                    <div class="tab-item" data-tab="floor2">二层地图</div>
+                    <div class="tab-item" data-tab="floorF1">地下一层地图</div>
+                </div>
+                <div class="tab-content" id="tabContent">
+                    <!-- 地图内容由JS加载 -->
+                    请选择地图楼层
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 输入区域 -->
+    <div class="input-frame">
+        <label class="input-label">输入指令:</label>
+        <input type="text" class="input-entry" id="inputEntry" placeholder="输入游戏指令，回车发送...">
+        <button class="btn send-btn" id="sendBtn">发送</button>
+    </div>
+
+    <!-- 服务器配置弹窗 -->
+    <div class="modal-mask" id="configModal">
+        <div class="modal-container">
+            <h3 class="modal-title">服务器配置</h3>
+            <div class="modal-form-item">
+                <label class="modal-form-label">服务器IP地址</label>
+                <input type="text" class="modal-form-input" id="serverIp" value="127.0.0.1">
+            </div>
+            <div class="modal-form-item">
+                <label class="modal-form-label">服务器端口</label>
+                <input type="text" class="modal-form-input" id="serverPort" value="9999">
+            </div>
+            <div class="modal-btn-group">
+                <button class="btn" id="confirmConfigBtn">确认配置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== 全局配置（保留原代码参数）=====
+        const MAP_PATHS = {
+            "floor1": "map_floor1.png",
+            "floor2": "map_floor2.png",
+            "floorF1": "map_floorF1.png"
+        };
+        const BUFFER_SIZE = 1024;
+        const ENCODING = "utf-8";
+
+        // ===== 全局状态 =====
+        let clientSocket = null;
+        let isConnected = false;
+        let mapVisible = false;
+        let currentHost = "127.0.0.1";
+        let currentPort = 9999;
+        let currentTab = "floor1";
+
+        // ===== DOM元素 =====
+        const statusLabel = document.getElementById("statusLabel");
+        const configBtn = document.getElementById("configBtn");
+        const mapBtn = document.getElementById("mapBtn");
+        const msgPanel = document.getElementById("msgPanel");
+        const mapPanel = document.getElementById("mapPanel");
+        const tabHeader = document.getElementById("tabHeader");
+        const tabContent = document.getElementById("tabContent");
+        const inputEntry = document.getElementById("inputEntry");
+        const sendBtn = document.getElementById("sendBtn");
+        const configModal = document.getElementById("configModal");
+        const serverIp = document.getElementById("serverIp");
+        const serverPort = document.getElementById("serverPort");
+        const confirmConfigBtn = document.getElementById("confirmConfigBtn");
+
+        // ===== 初始化 =====
+        window.onload = function () {
+            loadMap(currentTab);
+            bindEvents();
+        };
+
+        // ===== 事件绑定 =====
+        function bindEvents() {
+            // 服务器配置按钮
+            configBtn.addEventListener("click", function () {
+                if (isConnected) {
+                    disconnectServer();
+                } else {
+                    openConfigModal();
+                }
+            });
+
+            // 地图显示/隐藏
+            mapBtn.addEventListener("click", toggleMap);
+
+            // 选项卡切换
+            tabHeader.querySelectorAll(".tab-item").forEach(item => {
+                item.addEventListener("click", function () {
+                    tabHeader.querySelectorAll(".tab-item").forEach(t => t.classList.remove("active"));
+                    this.classList.add("active");
+                    currentTab = this.dataset.tab;
+                    loadMap(currentTab);
+                });
+            });
+
+            // 发送指令
+            sendBtn.addEventListener("click", sendMessage);
+            inputEntry.addEventListener("keydown", function (e) {
+                if (e.key === "Enter") sendMessage();
+            });
+
+            // 配置弹窗确认
+            confirmConfigBtn.addEventListener("click", confirmConfig);
+
+            // 点击弹窗外部关闭
+            configModal.addEventListener("click", function (e) {
+                if (e.target === configModal) closeConfigModal();
+            });
+        }
+
+        // ===== 地图加载 =====
+        function loadMap(tabKey) {
+            const imgPath = MAP_PATHS[tabKey];
+            const img = new Image();
+            img.src = imgPath;
+            img.className = "map-img";
+
+            img.onload = function () {
+                tabContent.innerHTML = "";
+                tabContent.appendChild(img);
+            };
+
+            img.onerror = function () {
+                tabContent.innerHTML = `地图加载失败：文件不存在 ${imgPath}`;
+                addMsg(`⚠️ ${tabHeader.querySelector(`[data-tab="${tabKey}"]`).textContent} 加载异常`, "error");
+            };
+        }
+
+        // ===== 地图显示切换 =====
+        function toggleMap() {
+            if (!mapVisible) {
+                mapPanel.style.display = "block";
+                mapBtn.textContent = "隐藏地图";
+                mapVisible = true;
+            } else {
+                mapPanel.style.display = "none";
+                mapBtn.textContent = "显示地图";
+                mapVisible = false;
+            }
+        }
+
+        // ===== 消息添加 =====
+        function addMsg(msg, type = "default") {
+            const colorMap = {
+                self: "#5CA4D8",
+                system: "#9C6CD3",
+                success: "#64B89C",
+                error: "#E76474",
+                tip: "#E8B569",
+                default: "#555555"
+            };
+
+            const color = colorMap[type];
+            const div = document.createElement("div");
+            div.textContent = msg;
+            div.style.color = color;
+            div.style.marginBottom = "2px";
+
+            msgPanel.appendChild(div);
+            msgPanel.scrollTop = msgPanel.scrollHeight;
+        }
+
+        // ===== 服务器配置弹窗 =====
+        function openConfigModal() {
+            serverIp.value = currentHost;
+            serverPort.value = currentPort;
+            configModal.style.display = "flex";
+        }
+
+        function closeConfigModal() {
+            configModal.style.display = "none";
+        }
+
+        function confirmConfig() {
+            const newHost = serverIp.value.trim();
+            const newPort = serverPort.value.trim();
+
+            if (!newHost) {
+                alert("IP地址不能为空！");
+                return;
+            }
+
+            const portNum = parseInt(newPort);
+            if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+                alert("端口号必须是1-65535的整数！");
+                return;
+            }
+
+            currentHost = newHost;
+            currentPort = portNum;
+            statusLabel.textContent = `已配置服务器 ${currentHost}:${currentPort} | 未连接`;
+            statusLabel.style.color = "#E785A6";
+            addMsg(`✅ 服务器配置完成：${currentHost}:${currentPort}`, "success");
+            closeConfigModal();
+
+            alert("点击确定尝试连接服务器");
+            connectServer();
+        }
+
+        // ===== 服务器连接 =====
+        function connectServer() {
+            if (isConnected) {
+                alert("已连接服务器，无需重复连接！");
+                return;
+            }
+
+            // WebSocket 连接（浏览器不支持原生TCP Socket，这里用WebSocket替代演示）
+            try {
+                // 注意：实际使用需要服务器端支持WebSocket
+                clientSocket = new WebSocket(`ws://${currentHost}:${currentPort}`);
+
+                clientSocket.onopen = function () {
+                    isConnected = true;
+                    configBtn.textContent = "断开连接";
+                    statusLabel.textContent = `已连接服务器 ${currentHost}:${currentPort} | 游戏中`;
+                    statusLabel.style.color = "#8BC8E8";
+                    addMsg(`✅ 成功连接到游戏服务器 ${currentHost}:${currentPort}！`, "success");
+
+                    // 接收消息监听
+                    clientSocket.onmessage = function (event) {
+                        const msg = event.data;
+                        if (msg.includes("系统公告") || msg.includes("游戏结束")) {
+                            addMsg(msg, "system");
+                        } else if (msg.includes("成功") || msg.includes("获得") || msg.includes("已到达")) {
+                            addMsg(msg, "success");
+                        } else if (msg.includes("失败") || msg.includes("死亡") || msg.includes("不可")) {
+                            addMsg(msg, "error");
+                        } else if (msg.includes("请") || msg.includes("输入") || msg.includes("可选")) {
+                            addMsg(msg, "tip");
+                        } else {
+                            addMsg(msg, "default");
+                        }
+                    };
+
+                    // 连接关闭监听
+                    clientSocket.onclose = function () {
+                        disconnectServer();
+                        addMsg("❌ 与服务器断开连接", "error");
+                    };
+
+                    // 错误监听
+                    clientSocket.onerror = function (error) {
+                        addMsg(`❌ 连接错误：${error.message}`, "error");
+                    };
+                };
+            } catch (e) {
+                alert(`连接失败：${e.message}`);
+                addMsg(`❌ 连接服务器失败：${e.message}`, "error");
+            }
+        }
+
+        // ===== 断开服务器 =====
+        function disconnectServer() {
+            if (isConnected && clientSocket) {
+                clientSocket.close();
+                isConnected = false;
+                configBtn.textContent = "设置服务器";
+                statusLabel.textContent = `已配置服务器 ${currentHost}:${currentPort} | 已断开`;
+                statusLabel.style.color = "#E785A6";
+            }
+        }
+
+        // ===== 发送消息 =====
+        function sendMessage() {
+            const msg = inputEntry.value.trim();
+            if (!msg) {
+                alert("输入内容不能为空！");
+                return;
+            }
+
+            if (!isConnected) {
+                alert("请先配置并连接服务器再发送指令！");
+                return;
+            }
+
+            try {
+                clientSocket.send(msg);
+                addMsg(`你：${msg}`, "self");
+                inputEntry.value = "";
+            } catch (e) {
+                alert(`发送失败：${e.message}`);
+                addMsg(`❌ 发送指令失败：${e.message}`, "error");
+            }
+        }
+    </script>
+</body>
+
+</html>
