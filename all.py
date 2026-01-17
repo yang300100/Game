@@ -19,6 +19,9 @@ class Player:
         self.wechat = [[] for _ in range(player_num + 1)]   #私聊消息记录
         self.message_len = [0] * (player_num + 1)     #收到通知前消息变化量
         self.deadtime = []  #死亡时间记录
+        self.dead_location = ""  #死亡地点记录
+        self.jump_speak = 0  #是否跳过发言环节，跳过为1，不跳过为0
+        self.send_message = 0   # 在发言阶段，此值为0时说明未被发送消息，发送消息后置1
 
     def check_phone(self):
         global player_list
@@ -133,7 +136,7 @@ class Player:
             send_to_player(self.id,f"你在{self.location}发现了情报：“{random_item.name}”已添加至背包\n")
     
     def attack(self):
-        global time_start, player_list, time_real_start
+        global time_start, player_list, time_real_start ,dead_list,room_item,location_list
         if self.killer == 0 or int(time.time()-time_real_start) < 60:  # 开局前一小时以及普通人不能攻击
             send_to_player(self.id,"不可攻击其他玩家，跳过本回合\n")
             return
@@ -193,6 +196,7 @@ class Player:
                         if j.nickname == choose:
                             j.life = 0
                             j.deadtime = get_time()
+                            dead_list.append(j.id)
                             break
                     break
         elif killer_choose == "使用道具" and not self.bag:
@@ -216,6 +220,7 @@ class Player:
                     room_item[location_list.index(self.location)].append(Item(f"{choose}的尸体",f"被杀害的尸体，死亡时间大约在{get_time()[1]}月{get_time()[2]}日的{am_or_pm}",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
                     j.life = 0
                     j.deadtime = get_time()
+                    dead_list.append(j.id)
                     break
 
 class Item:
@@ -267,25 +272,55 @@ class Shiro(Player):
                     send_to_player(self.id,"时间输入长度有误，重新输入\n")
                 elif not time_false.isdigit():
                     send_to_player(self.id,"时间输入格式有误，重新输入\n")
-                    time_false=[]
             time_li = [int(time_false[:4]),int(time_false[4:6]),int(time_false[6:8]),int(time_false[8:10]),int(time_false[10:])]
             false_item = Item("伪证："+name,describe,time_li,"情报")
             self.bag.append(false_item)
             send_to_player(self.id,"伪造完成，伪证已添加至背包\n")
 
-class Person2(Player):
+class Meruru(Player):
     def __init__(self,player_id,conn,player_num):
         super().__init__(player_id,conn,player_num)
-        self.name = "Person2"
+        self.name = "Meruru"
     def magic(self):
-        pass
+        global player_list,dead_location
+        choose = ""
+        if dead_list:
+            for i in dead_list:
+                if player_list[i].location != self.location:
+                    send_to_player(self.id,"魔法使用失败：不在尸体发现地点\n")
+                    return    
+                else:
+                    if self.magic_used:
+                        self.magic_used = 0 #置0显示魔法已使用
+                        send_to_player(self.id,"验尸中...\n")
+                        time.sleep(5)
+                        send_to_player(self.id,f"验尸完成！{player_list[i].nickname}的死亡时间为：{player_list[i].deadtime[1]}月{player_list[i].deadtime[2]}日{player_list[i].deadtime[3]}时{player_list[i].deadtime[4]}分\n")
+                        choose = get_message(self.id,f"是否要伪造验尸报告？（是/否）\n")
+                        while choose not in ["是","否"]:
+                            choose = get_message(self.id,"输入有误，重新输入\n")
+                        if choose == "是":
+                            time_false = []
+                            while len(time_false) != 12:
+                                time_false = get_message(self.id,"填写伪造的死亡时间，格式为：202509010101（2025年9月1日1时1分）\n")
+                                if len(time_false) != 12:
+                                    send_to_player(self.id,"时间输入长度有误，重新输入\n")
+                                elif not time_false.isdigit():
+                                    send_to_player(self.id,"时间输入格式有误，重新输入\n")
+                            self.bag.append(Item("梅露露的验尸报告",f"报告显示{player_list[i].nickname}的死亡时间为：{int(time_false[4:6])}月{int(time_false[6:8])}日{int(time_false[8:10])}时{int(time_false[10:])}分",get_time(),"情报"))
+                            send_to_player(self.id,"伪造完成，验尸报告已添加至背包\n")
+                        else:
+                            self.bag.append(Item("梅露露的验尸报告",f"报告显示{player_list[i].nickname}的死亡时间为：{player_list[i].deadtime[1]}月{player_list[i].deadtime[2]}日{player_list[i].deadtime[3]}时{player_list[i].deadtime[4]}分",get_time(),"情报"))
+                            send_to_player(self.id,"验尸报告已添加至背包\n")
+        else:
+            send_to_player(self.id,"魔法使用失败：暂未发现尸体\n")
 
-class Person3(Player):
+class Anan(Player):
     def __init__(self,player_id,conn,player_num):
         super().__init__(player_id,conn,player_num)
-        self.name = "Person3"
+        self.name = "Anan"
+        self.magic_used = 3
     def magic(self):
-        pass
+        send_to_player(self.id,"魔法暂不可使用")
 
 class Person4(Player):
     def __init__(self,player_id,conn,player_num):
@@ -361,7 +396,7 @@ def create_player(player_id,player_name,conn,player_num):
         conn.send("人物创建完成\n".encode(ENCODING))
 
 def activate(player,n):
-    global player_list,dead_search  #活动函数
+    global player_list,dead_search,dead_location  #活动函数
     if n != 0:
         for i in range(n):#5次搜证机会,搜证期间不可攻击
             get_distance(player)
@@ -421,53 +456,94 @@ def activate(player,n):
                     dead_search = 1 #尸体被发现，跳出循环
                     send_to_player(player.id,"你发现了一具尸体，进入搜证阶段\n")
                     broadcast(f"玩家{player.nickname}在{player.location}发现了一具尸体，进入搜证阶段\n")
+                    dead_location = player.location
                     break
 
+speech_finish = 0
 def end_speak(player):
-    global player_list
+    global player_list,speech_finish
     end_speech = 0
+    speech_finish = 0
     while end_speech < len(player_list):
         end_speech = 0
         for i in range(len(player_list)):
-            if  player_list[i].life == 0:
-                send_to_player(i,"你已死亡，跳过发言环节\n")
-                end_speech += 1
-                continue
-            if i == player.id and player.bag:
-                item_list = []
-                send_to_player(i,"请玩家选择你要提交的证据，随后发言：\n")
-                for j in player.bag:
-                    send_to_player(i,f"“{j.name}” ")
-                    item_list.append(j.name)
-                send_to_player(i,"\n")
-                speech = get_message(i,"请输入你要提交的证据,输入其他跳过发言：\n")
-                if speech in item_list:
-                    broadcast(f"玩家{player_list[i].nickname}提交了证据：“{speech}”\n")
-                    it = player_list[i].bag[item_list.index(speech)]#取出物品对象
-                    broadcast(f"名称：{it.name}\n描述：{it.describe}\n获取时间：{it.get_time[1]}月{it.get_time[2]}日 {it.get_time[3]}:{it.get_time[4]}\n类型：{it.type}\n")
-                    player_list[i].bag.remove(item_list.index(speech))
-                    message = get_message(i,"请输入你的发言内容:\n")
-                    broadcast(f"{player_list[i].nickname}：{message}\n")
-                    broadcast("-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
-                else:
-                    send_to_player(i,"跳过发言环节\n")
+            while not speech_finish:
+                if  player_list[i].life == 0:
+                    send_to_player(i,"你已死亡，跳过发言环节\n")
                     end_speech += 1
-            if i == player.id and not player.bag:
-                send_to_player(i,"你没有证据可提交，跳过发言环节\n")
-                end_speech += 1
-            elif i != player.id:
-                send_to_player(i,"请等待其他玩家发言\n")
+                    speech_finish = 1
+                
+                if i == player.id and i.name == "Anan" and i.magic_used > 0:
+                    send_to_player(player.id,"你可以发动魔法，输入一名玩家的昵称，使得此玩家出示证据后跳过发言一次\n")
+                    send_to_player(player.id,"可选玩家：")
+                    name_str = ""
+                    choose_list = []
+                    for j in player_list:
+                        if j.id != player.id and j.life == 1:
+                            name_str += j.nickname + " "
+                            choose_list.append(j)
+                    send_to_player(player.id,name_str+"\n")
+                    choose = get_message(player.id,"请输入玩家昵称,输入空即为放弃使用魔法\n")
+                    for k in choose_list:
+                        if k.nickname == choose:
+                            k.jump_speak = 1
+                            send_to_player(player.id,f"你使用魔法成功，使玩家{choose}提交证据后跳过发言一次\n")
+                            player.magic_used -= 1
+
+                if i == player.id and player.bag:
+                    item_list = []
+                    send_to_player(i,"请玩家选择你要提交的证据，随后发言：\n")
+                    for j in player.bag:
+                        send_to_player(i,f"“{j.name}” ")
+                        item_list.append(j.name)
+                    send_to_player(i,"\n")
+                    speech = get_message(i,"请输入你要提交的证据,输入其他跳过发言：\n")
+                    if speech in item_list:
+                        broadcast(f"玩家{player.nickname}提交了证据：“{speech}”\n")
+                        it = player.bag[item_list.index(speech)]#取出物品对象
+                        broadcast(f"名称：{it.name}\n描述：{it.describe}\n获取时间：{it.get_time[1]}月{it.get_time[2]}日 {it.get_time[3]}:{it.get_time[4]}\n类型：{it.type}\n")
+                        player.bag.remove(item_list.index(speech))
+                        if player.jump_speak:
+                            broadcast("Anan:[闭嘴]")
+                            broadcast("-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
+                            speech_finish = 1
+                            player.jump_speak = 0
+                        else:
+                            message = get_message(i,"请输入你的发言内容:\n")
+                            broadcast(f"{player.nickname}：{message}\n")
+                            broadcast("-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
+                            speech_finish = 1
+                    else:
+                        send_to_player(i,"跳过发言环节\n")
+                        end_speech += 1
+                        speech_finish = 1
+                if i == player.id and not player.bag:
+                    send_to_player(i,"你没有证据可提交，跳过发言环节\n")
+                    end_speech += 1
+                    speech_finish = 1
+
+                if i != player.id and not player.send_message:
+                    player.send_message = 1
+                    send_to_player(player.id,"请等待其他玩家发言\n")
+            speech_finish = 0
+            player.send_message = 0
     broadcast("所有玩家全部跳过发言，进入总结阶段，总结阶段中每名玩家只能发言一次\n")
     for i in range(len(player_list)):
-        if player_list[i].life == 0:
-            send_to_player(i,"你已死亡，跳过发言环节\n")
-            continue
-        if i == player.id:
-            message = get_message(i,"请输入你的总结发言内容:\n")
-            broadcast(f"{player_list[i].nickname}：{message}\n")
-            broadcast("-"*10 +f"{player.nickname}总结发言结束"+"-"*10+"\n")
-        elif i != player.id:
-            send_to_player(i,"请等待其他玩家发言\n")
+        while not speech_finish:
+            if player_list[i].life == 0:
+                send_to_player(i,"你已死亡，跳过发言环节\n")
+                speech_finish = 1
+                continue
+            if i == player.id:
+                message = get_message(i,"请输入你的总结发言内容:\n")
+                broadcast(f"{player_list[i].nickname}：{message}\n")
+                broadcast("-"*10 +f"{player.nickname}总结发言结束"+"-"*10+"\n")
+                speech_finish = 1
+            elif i != player.id and not player.send_message:
+                player.send_message = 1
+                send_to_player(i,"请等待其他玩家发言\n")
+        speech_finish = 0
+        player.send_message = 0
 
 def game_start(player):
     global ticket,player_list
@@ -771,13 +847,14 @@ ENCODING = "utf-8"              # 发送数据编码格式
 player_id_counter = 0           # 在创建玩家时计算玩家id
 lock = threading.Lock()         # 线程锁定义，保证多线程操作玩家字典时不冲突
 max_player_num = 0              # 设置最大游玩人数，达到最大游玩人数之后开始主程序执行
-dead_search = 0                 # 死者是否背发现，0-未被发现，1-已被发现
+dead_search = 0                 # 死者是否被发现，0-未被发现，1-已被发现
 player_list = []                # 全局玩家列表
+dead_list = []                  # 全局死亡玩家列表(id)
 ticket = [0] * len(player_list) # 投票计数列表，索引对应玩家id，值对应票数
 location_list = ["医务室","淋浴房","日光房","杂物处","中庭","接客室","女厕","会客厅","玄关大厅","审判庭入口过道",
                 "食堂","厨房","审判庭","牢房","焚烧炉","惩罚室","娱乐室","工作室","2F大厅","图书室"]  # 地点列表，用于计算对应地点之间的距离
-p_list = [Shiro, Person2, Person3, Person4] #人物类存储列表
-p_name_list = ["Shiro", "Person2", "Person3", "Person4"]    # 人物类名称列表
+p_list = [Shiro, Meruru, Anan, Person4] #人物类存储列表
+p_name_list = ["Shiro", "Meruru", "Anan", "Person4"]    # 人物类名称列表
 time_start = [2026,1,6,9,00,0]  # 游戏的起始游戏时间
 time_real_start = time.time()   # 获取真实时间戳，用于计算时间流逝
 
