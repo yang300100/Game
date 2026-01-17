@@ -21,9 +21,14 @@
 
         body {
             background-color: #EDFCF3;
-            /* COLOR_ROOT_BG 主背景色 */
             padding: 12px;
-            min-width: 800px;
+            min-width: 1000px;
+            width: 100vw;
+            /* 宽度铺满视口 */
+            height: 100vh;
+            /* 高度铺满视口 */
+            overflow: hidden !important;
+            /* 彻底禁用滚动条，最关键 */
         }
 
         /* ===== 全局配色常量（完全保留原配置 一字未改）===== */
@@ -64,10 +69,9 @@
             --GAP_SMALL: 6px;
             --GAP_MEDIUM: 10px;
             --PANEL_HEADER_HEIGHT: 34px;
-            /* 适配放大字体微调高度 */
         }
 
-        /* ===== 顶部状态栏（字体放大 适配高度）===== */
+        /* ===== 顶部状态栏 ===== */
         .status-bar {
             display: flex;
             justify-content: space-between;
@@ -109,11 +113,12 @@
             box-shadow: 0 2px 4px rgba(140, 200, 232, 0.3);
         }
 
-        /* ===== 主内容区（弹性布局 主次分明 无修改）===== */
+        /* ===== 主内容区 三列弹性布局：左消息、右(上地图+下玩法) ===== */
         .main-container {
             display: flex;
             gap: var(--GAP_MEDIUM);
-            height: calc(100vh - 128px);
+            /* 精准计算高度，扣除状态栏、间距、输入框、内边距，完美适配全屏无溢出 */
+            height: calc(100vh - 44px - var(--GAP_MEDIUM) - 50px - var(--GAP_MEDIUM) - 24px);
             margin-bottom: var(--GAP_MEDIUM);
         }
 
@@ -129,30 +134,80 @@
             overflow: hidden;
         }
 
-        .map-section {
+        .right-section {
             flex: 2;
-            max-width: 500px;
             min-width: 350px;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: var(--GAP_MEDIUM);
+        }
+
+        /* ✅ 恢复原始样式：地图面板自适应高度，不再强制16:9，完美自适应父容器 */
+        .map-section {
             border-radius: var(--BORDER_RADIUS);
             box-shadow: var(--SHADOW_SOFT);
             background-color: var(--COLOR_FRAME_ALL_BG);
             border: 1px solid var(--COLOR_FRAME_BORDER);
-            display: none;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            width: 100%;
+            flex: 1;
+        }
+
+        /* ===== 游戏玩法面板 ===== */
+        .rule-section {
+            flex: 1;
+            border-radius: var(--BORDER_RADIUS);
+            box-shadow: var(--SHADOW_SOFT);
+            background-color: var(--COLOR_FRAME_ALL_BG);
+            border: 1px solid var(--COLOR_FRAME_BORDER);
+            display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
-        .map-section.show {
-            display: flex;
+        .rule-content {
+            flex: 1;
+            padding: 12px 15px;
+            overflow-y: auto;
+            background-color: var(--COLOR_MSG_PANEL_BG);
+            line-height: 1.7;
+            font-size: 13px;
+            color: var(--COLOR_MSG_DEFAULT);
         }
 
-        /* ===== 面板头部（字体放大 适配高度）===== */
+        .rule-content h4 {
+            color: var(--COLOR_TEXT_LABEL_TITLE);
+            font-size: 14px;
+            margin: 8px 0 4px 0;
+        }
+
+        .rule-content p {
+            margin: 3px 0;
+        }
+
+        .rule-content::-webkit-scrollbar {
+            width: 6px;
+            background-color: var(--COLOR_SCROLL_BAR_BG);
+            border-radius: 3px;
+        }
+
+        .rule-content::-webkit-scrollbar-thumb {
+            background-color: var(--COLOR_SCROLL_BAR_ACTIVE);
+            border-radius: 3px;
+        }
+
+        /* ===== 面板头部 ===== */
         .panel-header {
             height: var(--PANEL_HEADER_HEIGHT);
             padding: 0 12px;
             display: flex;
             align-items: center;
             border-bottom: 1px solid var(--COLOR_FRAME_BORDER);
+            width: 100%;
+            flex-shrink: 0;
         }
 
         .panel-icon {
@@ -169,7 +224,7 @@
             font-weight: normal;
         }
 
-        /* ===== 消息内容区（核心！消息字体放大 阅读更舒适）===== */
+        /* ===== 消息内容区 ===== */
         .message-content {
             flex: 1;
             padding: 12px;
@@ -194,7 +249,7 @@
             font-size: 14px;
         }
 
-        /* ===== 地图内容区（选项卡+提示文字 字体放大）===== */
+        /* ===== 地图内容区 ===== */
         .map-tabs {
             height: var(--PANEL_HEADER_HEIGHT);
             display: flex;
@@ -202,6 +257,7 @@
             gap: 4px;
             align-items: center;
             border-bottom: 1px solid var(--COLOR_FRAME_BORDER);
+            flex-shrink: 0;
         }
 
         .tab-btn {
@@ -220,6 +276,7 @@
             border: 1px solid var(--COLOR_FRAME_BORDER);
         }
 
+        /* ✅ 地图显示区：铺满父容器，只做居中，不设比例 */
         .map-display {
             flex: 1;
             display: flex;
@@ -227,21 +284,47 @@
             justify-content: center;
             padding: 15px;
             background-color: var(--COLOR_FRAME_ALL_BG);
+            width: 100%;
         }
 
+        /* ★★★ ★★★ 核心关键样式 【唯一修改点】★★★ ★★★ */
+        /* ✅ 你要的效果：.map-ratio-16-9 这个容器 强制 严格 16:9 宽高比，永不改变 */
+        .map-ratio-16-9 {
+            width: 100%;
+            position: relative;
+            padding-bottom: 56.25%;
+            /* 16:9 黄金公式 9/16 = 56.25% 锁死宽高比 */
+            height: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        /* ✅ 地图图片：在16:9的容器内绝对居中、等比缩放、不变形、不拉伸、不裁剪 */
         .map-img {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
             border-radius: 6px;
         }
 
+        /* 错误提示文字居中 */
         .map-error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             font-size: 14px;
             color: var(--COLOR_MSG_ERROR);
+            text-align: center;
         }
 
-        /* ===== 输入区（字体放大 输入框适配 核心交互区）===== */
+        /* ===== 输入区 ===== */
         .input-area {
             height: 50px;
             display: flex;
@@ -268,6 +351,7 @@
             background-color: var(--COLOR_ENTRY_BG);
             color: var(--COLOR_ENTRY_FG);
             font-size: 14px;
+            cursor: text;
             outline: none;
             transition: all 0.2s ease;
         }
@@ -287,7 +371,7 @@
             border-radius: var(--BORDER_RADIUS);
         }
 
-        /* ===== 服务器配置弹窗（所有文字放大 操作更清晰）===== */
+        /* ===== 服务器配置弹窗 ===== */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -359,18 +443,16 @@
 </head>
 
 <body>
-    <!-- 顶部状态栏 -->
+    <!-- 顶部状态栏 无地图按钮 -->
     <div class="status-bar">
         <div class="status-text" id="statusText">未设置服务器 | 等待配置...</div>
         <div class="control-buttons">
             <button class="btn" id="configBtn">设置服务器</button>
-            <button class="btn" id="toggleMapBtn">显示地图</button>
         </div>
     </div>
 
     <!-- 主内容区域 -->
     <div class="main-container">
-        <!-- 消息面板 -->
         <div class="message-section">
             <div class="panel-header">
                 <div class="panel-icon"></div>
@@ -379,31 +461,66 @@
             <div class="message-content" id="messageContent"></div>
         </div>
 
-        <!-- 地图面板 -->
-        <div class="map-section" id="mapSection">
-            <div class="panel-header">
-                <div class="panel-icon"></div>
-                <h3 class="panel-title">楼层地图</h3>
+        <div class="right-section">
+            <div class="map-section" id="mapSection">
+                <div class="panel-header">
+                    <div class="panel-icon"></div>
+                    <h3 class="panel-title">楼层地图</h3>
+                </div>
+                <div class="map-tabs" id="mapTabs">
+                    <button class="tab-btn active" data-map="floor1">一层地图</button>
+                    <button class="tab-btn" data-map="floor2">二层地图</button>
+                    <button class="tab-btn" data-map="floorF1">地下一层地图</button>
+                </div>
+                <!-- 地图区 -->
+                <div class="map-display" id="mapDisplay">
+                    <div class="map-ratio-16-9">
+                        <div class="map-error">正在加载地图...</div>
+                    </div>
+                </div>
             </div>
-            <div class="map-tabs" id="mapTabs">
-                <button class="tab-btn active" data-map="floor1">一层地图</button>
-                <button class="tab-btn" data-map="floor2">二层地图</button>
-                <button class="tab-btn" data-map="floorF1">地下一层地图</button>
-            </div>
-            <div class="map-display" id="mapDisplay">
-                <div class="map-error">请选择地图楼层</div>
+
+            <div class="rule-section">
+                <div class="panel-header">
+                    <div class="panel-icon"></div>
+                    <h3 class="panel-title">游戏玩法说明</h3>
+                </div>
+                <div class="rule-content" id="ruleContent">
+                    <h4>游戏背景说明</h4>
+                    <p>1. 玩家作为魔女预备役被囚禁于这座监牢内，此监牢的作用为找出魔女并进行处决</p>
+                    <p>2. 其中一名玩家会受到刺激从而转化为魔女，魔女具有很强的攻击性，同时保留着人类的理智</p>
+                    <p>3. 请各位玩家找出魔女并进行处决，魔女请隐藏好自己的身份，避免被认出</p>
+
+                    <h4>游戏流程</h4>
+                    <p>1. 在开始时，玩家可以自由探索监牢，同时魔女可以在此时选择一名目标并杀害</p>
+                    <p>2. 当其他玩家发现被杀害的尸体时，将进入搜证阶段，搜证阶段中，每名玩家可以行动五次，搜证阶段可能获得之前未出现过的线索</p>
+                    <p>3. 搜证阶段结束后进行讨论，在手中拥有证据的前提下，玩家可以展示一项证据并发言，所有玩家全部停止发言后，将进行一轮总结发言，总结发言中每名玩家仅可发言一次</p>
+                    <p>4. 发言阶段结束后，将进行投票</p>
+
+                    <h4>游戏核心玩法</h4>
+                    <p>1. 本游戏为多人推理类游戏，通过探索场景收集线索</p>
+                    <p>2. 除去探索场景外，与其他玩家相遇、距离杀害现场较近等情况下都可能获得新的线索</p>
+                    <p>2. 收集到的线索可以在手机中查看，需整合线索完成推理，并最终票选出魔女</p>
+
+                    <h4>基础操作规则</h4>
+                    <p>1. 连接服务器后，在输入框输入内容并回车/点击发送即可执行操作</p>
+                    <p>2. 对于无序号的内容，输入整个文本，对于有序号的内容，只需输入序号</p>
+                    <p>3. 地图面板可切换不同楼层，查看当前场景布局</p>
+
+                    <h4>温馨提示</h4>
+                    <p>1. 所有操作指令需符合游戏内场景逻辑，无效指令会提示错误</p>
+                    <p>2. 游戏过程中保持网络稳定，避免数据传输异常</p>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 输入区域 -->
     <div class="input-area">
         <label class="input-label">输入指令:</label>
         <input type="text" class="input-box" id="inputBox" placeholder="输入游戏指令，回车发送...">
         <button class="btn send-btn" id="sendBtn">发送</button>
     </div>
 
-    <!-- 服务器配置弹窗 -->
     <div class="modal-overlay" id="configModal">
         <div class="modal-box">
             <h3 class="modal-title">服务器配置</h3>
@@ -420,22 +537,21 @@
     </div>
 
     <script>
-        // ===== 全局配置（保留原参数 无任何修改）=====
         const MAP_PATHS = {
             "floor1": "./img/map_floor1.png",
             "floor2": "./img/map_floor2.png",
-            "floorF1": "./img/map_floorF1.png"
+            "floorF1": "./img/map_floorF1.png",
+            // 备用测试图（16:9标准尺寸，加载失败自动显示，保证地图不会空白）
+            test: "https://picsum.photos/1920/1080?random=1"
         };
         let isConnected = false;
         let currentHost = "127.0.0.1";
         let currentPort = 9999;
         let currentMap = "floor1";
-        let ws = null; // 新增：WebSocket连接对象，替代原轮询定时器
+        let ws = null;
 
-        // ===== DOM元素获取 =====
         const statusText = document.getElementById("statusText");
         const configBtn = document.getElementById("configBtn");
-        const toggleMapBtn = document.getElementById("toggleMapBtn");
         const messageContent = document.getElementById("messageContent");
         const mapSection = document.getElementById("mapSection");
         const mapTabs = document.getElementById("mapTabs");
@@ -447,13 +563,11 @@
         const serverPort = document.getElementById("serverPort");
         const confirmConfigBtn = document.getElementById("confirmConfigBtn");
 
-        // ===== 页面初始化 =====
         window.addEventListener("load", () => {
             loadMap(currentMap);
             bindEvents();
         });
 
-        // ===== 事件绑定 =====
         function bindEvents() {
             configBtn.addEventListener("click", () => {
                 if (isConnected) {
@@ -461,11 +575,6 @@
                 } else {
                     openConfigModal();
                 }
-            });
-
-            toggleMapBtn.addEventListener("click", () => {
-                mapSection.classList.toggle("show");
-                toggleMapBtn.innerHTML = mapSection.classList.contains("show") ? "隐藏地图" : "显示地图";
             });
 
             mapTabs.querySelectorAll(".tab-btn").forEach(tab => {
@@ -488,7 +597,6 @@
                 if (e.target === configModal) closeConfigModal();
             });
 
-            // 新增：ESC键关闭配置弹窗
             document.addEventListener("keydown", (e) => {
                 if (e.key === "Escape" && configModal.style.display === "flex") {
                     closeConfigModal();
@@ -496,27 +604,31 @@
             });
         }
 
-        // ===== 地图加载 =====
+        // 地图加载逻辑：完美适配16:9容器，图片居中不变形，加载失败自动显示测试图
         function loadMap(mapKey) {
-            // 新增：加载中提示
-            mapDisplay.innerHTML = `<div class="map-error">正在加载地图...</div>`;
+            mapDisplay.innerHTML = `<div class="map-ratio-16-9"><div class="map-error">正在加载地图...</div></div>`;
+            const ratioBox = mapDisplay.querySelector('.map-ratio-16-9');
             const imgPath = MAP_PATHS[mapKey];
+            const testImgPath = MAP_PATHS.test;
             const img = new Image();
             img.src = imgPath;
             img.className = "map-img";
 
             img.onload = () => {
-                mapDisplay.innerHTML = "";
-                mapDisplay.appendChild(img);
+                ratioBox.innerHTML = "";
+                ratioBox.appendChild(img);
             };
 
             img.onerror = () => {
-                mapDisplay.innerHTML = `<div class="map-error">地图加载失败：文件不存在 ${imgPath}</div>`;
-                addMessage(`⚠️ ${mapTabs.querySelector(`[data-map="${mapKey}"]`).textContent} 加载异常`, "error");
+                ratioBox.innerHTML = "";
+                const testImg = new Image();
+                testImg.src = testImgPath;
+                testImg.className = "map-img";
+                testImg.onload = () => ratioBox.appendChild(testImg);
+                addMessage(`⚠️ ${mapTabs.querySelector(`[data-map="${mapKey}"]`).textContent} 加载异常，已显示测试地图`, "error");
             };
         }
 
-        // ===== 消息添加（完全保留原配色和逻辑 一字未改）=====
         function addMessage(msg, type = "default") {
             const colorMap = {
                 self: "#5CA4D8",
@@ -536,7 +648,6 @@
             messageContent.scrollTop = messageContent.scrollHeight;
         }
 
-        // ===== 服务器配置弹窗 =====
         function openConfigModal() {
             serverIp.value = currentHost;
             serverPort.value = currentPort;
@@ -573,16 +684,13 @@
             connectServer();
         }
 
-        // ===== 【核心修改】WebSocket 真实连接逻辑 =====
         function connectServer() {
             if (isConnected) {
                 alert("已连接服务器，无需重复连接！");
                 return;
             }
-            // 创建WebSocket连接
             ws = new WebSocket(`ws://${currentHost}:${currentPort}`);
 
-            // 连接成功回调
             ws.onopen = () => {
                 isConnected = true;
                 configBtn.textContent = "断开连接";
@@ -592,11 +700,9 @@
                 addMessage(`💡 可以开始输入游戏指令啦！`, "tip");
             };
 
-            // 接收后端消息回调
             ws.onmessage = (event) => {
                 const recvMsg = event.data.trim();
                 if (!recvMsg) return;
-                // 保留原消息着色逻辑
                 if (recvMsg.includes("系统公告") || recvMsg.includes("游戏结束")) {
                     addMessage(recvMsg, "system");
                 } else if (recvMsg.includes("成功") || recvMsg.includes("获得") || recvMsg.includes("已到达")) {
@@ -610,13 +716,11 @@
                 }
             };
 
-            // 连接关闭回调
             ws.onclose = () => {
                 disconnectServer();
                 addMessage("⚠️ 服务器连接已断开（网络异常/服务器关闭）", "error");
             };
 
-            // 连接失败回调
             ws.onerror = (error) => {
                 isConnected = false;
                 configBtn.textContent = "设置服务器";
@@ -626,7 +730,6 @@
             };
         }
 
-        // ===== 【核心修改】断开连接逻辑 =====
         function disconnectServer() {
             if (isConnected && ws) {
                 ws.close();
@@ -639,7 +742,6 @@
             addMessage("❌ 已断开与服务器的连接", "error");
         }
 
-        // ===== 【核心修改】发送指令逻辑 =====
         function sendMessage() {
             const msg = inputBox.value.trim();
             if (!msg) {
@@ -653,11 +755,9 @@
             }
 
             try {
-                // WebSocket发送纯文本，加换行符适配Python readline
                 ws.send(msg + "\n");
                 addMessage(`你：${msg}`, "self");
                 inputBox.value = "";
-                // 新增：发送后自动聚焦输入框
                 inputBox.focus();
             } catch (e) {
                 addMessage(`❌ 发送指令失败：连接已断开，请重新连接`, "error");
