@@ -705,11 +705,16 @@ def handle_client(conn, addr):
             print(f"[系统] 新玩家连接：{addr} → 【{player.nickname}】(ID:{player.id})")
             send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
             send_to_player(player.id,"-"*30+"\n")
+            send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
             while len(player_list) < max_player_num:
-                pass
-            player_list[random.randint(0,max_player_num-1)].killer = 1  #随机分配魔女身份
-            send_to_player(player.id,"所有玩家已加入，一名玩家已成为魔女，游戏开始\n")
-            send_to_player(player.id,"-"*30+"\n")
+                time.sleep(1)
+                send_to_player(player.id,f"等待中...{len(player_list)}/{max_player_num}\n")
+
+            # 随机分配魔女
+            killer_id = random.randint(0,max_player_num-1)
+            player_list[killer_id].killer = 1
+            send_to_player(killer_id, "恭喜你，你成为了【魔女】！请隐藏身份完成猎杀\n")
+            broadcast("所有玩家已加入，游戏正式开始！\n一名玩家已成为魔女，猎杀开始！\n")
             game_start(player)
         except Exception as e:
             print(f"[异常-在handle_cilent函数中] 玩家【{player_name}】异常：{e}")
@@ -758,7 +763,7 @@ def show_player(player):
     print(f"玩家距离列表：{player.distance}")
 
 #全局变量：
-USING_HTML = 0              # 是否使用HTML格式进行消息传输
+USING_HTML = 0                  # 是否使用HTML格式进行消息传输
 HOST = "0.0.0.0"                # 服务器IP地址
 PORT = 9999                     # 服务器端口
 BUFFER_SIZE = 1024              # 发送数据最大值
