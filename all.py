@@ -2,6 +2,8 @@ import random
 import time
 import socket
 import threading
+import base64
+import hashlib
 
 class Player:
     def __init__(self,player_id,conn,player_num):
@@ -41,14 +43,14 @@ class Player:
         #消息发送部分
         nickname_list = []
         send_to_player(self.id,"可聊天对象：\n")
+        name_str = ""
         for i in player_list:
             if i.id == self.id:
                 continue
-            send_to_player(self.id,i.nickname+" ")
+            name_str += i.nickname + " "
             nickname_list.append(i.nickname)
-        send_to_player(self.id,"公共群聊\n")
         nickname_list.append("公共群聊")
-        send_to_player(self.id,"")
+        send_to_player(self.id,name_str+"公共群聊\n")  
         choose = get_message(self.id,"输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机\n")
         item_list = [i.name for i in self.bag]
         while choose != "退出":
@@ -88,14 +90,13 @@ class Player:
         global location_list
         choose = ""
         while choose not in location_list:
-            try:
-                send_to_player(self.id,f"可选地点：")
-                for i in location_list:
-                    send_to_player(self.id,f"{i} ")
-                send_to_player(self.id,"\n")
-                choose = get_message(self.id,f"{self.nickname}要去哪里\n")
-            except:
-                choose = ""
+            room_str = ""
+            send_to_player(self.id,f"可选地点：")
+            for i in location_list:
+                room_str += i + " "
+            send_to_player(self.id,room_str+"\n")
+            choose = get_message(self.id,f"{self.nickname}要去哪里\n")
+            if choose not in location_list:
                 send_to_player(self.id,"输入错误，重新输入\n")
         
         for i in range(5):
@@ -336,18 +337,28 @@ def get_time():
 def create_player(player_id,player_name,conn,player_num):
     global player_list,p_name_list
     print("开始选择人物")
-    conn.send("人物列表：Shiro Person2 Person3 Person4\n".encode(ENCODING))
-    conn.send("请玩家选择人物：\n".encode(ENCODING))
+    if USING_HTML:
+        send_to_socket(conn, "人物列表：Shiro Person2 Person3 Person4\n")
+        send_to_socket(conn, "请玩家选择人物：\n")
+    else:
+        conn.send("人物列表：Shiro Person2 Person3 Person4\n".encode(ENCODING))
+        conn.send("请玩家选择人物：\n".encode(ENCODING))
     while True:
         print("人物遍历查询中")
-        choose_people = conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
+        if USING_HTML:
+            choose_people = recv_from_socket(conn)
+        else:
+            choose_people = conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
         if choose_people in p_name_list:
             break
     print(choose_people)
     player_list.append(p_list[p_name_list.index(choose_people)](player_id,conn,player_num))
     player_list[player_id].nickname = player_name
     print("玩家人物创建完成")
-    conn.send("人物创建完成\n".encode(ENCODING))
+    if USING_HTML:
+        send_to_socket(conn, "人物创建完成\n")
+    else:
+        conn.send("人物创建完成\n".encode(ENCODING))
 
 def activate(player,n):
     global player_list,dead_search  #活动函数
@@ -358,7 +369,8 @@ def activate(player,n):
             if player.life <=0:
                 send_to_player(player.id,f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
                 continue
-            send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n1.去别处看看 2.查看手机 \n3.发动魔法 ")
+            send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n")
+            send_to_player(player.id,"1.去别处看看 2.查看手机 \n3.发动魔法 ")
             choose = 0
             while choose not in [1,2,3]:
                 try:
@@ -383,7 +395,8 @@ def activate(player,n):
             if player.life <=0:
                 send_to_player(player.id,f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
                 continue
-            send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n1.去别处看看 2.查看手机 \n3.发动魔法 ")
+            send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n")
+            send_to_player(player.id,"1.去别处看看 2.查看手机 \n3.发动魔法 ")
             if player.killer:
                 send_to_player(player.id,"4.攻击（游戏开始的前一小时不能攻击）")
             choose = 0
@@ -490,13 +503,21 @@ def game_start(player):
 def get_message(player_id,message=""):
     global player_list   
     player = player_list[player_id]
-    if message:
-        send_to_player(player.id,message)
-    while True:
-        recv_data = player.conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
-        if recv_data:
-            print(f"[收到消息] 来自玩家【{player.nickname}】(ID:{player.id}) 的消息：{recv_data}")
-            return recv_data
+    if USING_HTML:
+        if message:
+            send_to_player(player.id,message)
+        data = player.conn.recv(BUFFER_SIZE)
+        if not data:
+            return ""
+        return parse_websocket_msg(data).strip()
+    else:
+        if message:
+            send_to_player(player.id,message)
+        while True:
+            recv_data = player.conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
+            if recv_data:
+                print(f"[收到消息] 来自玩家【{player.nickname}】(ID:{player.id}) 的消息：{recv_data}")
+                return recv_data
 
 
 def broadcast(message, exclude_conn=[]):
@@ -505,7 +526,10 @@ def broadcast(message, exclude_conn=[]):
         for i in player_list:
             if i.id not in exclude_conn:
                 try:
-                    i.conn.send(message.encode(ENCODING))
+                    if USING_HTML:
+                        send_to_socket(i.conn, message)
+                    else:
+                        i.conn.send(message.encode(ENCODING))
                 except:
                     remove_player_by_conn(i)
 
@@ -514,6 +538,12 @@ def send_to_player(player_id, message):
     with lock:
         if player_id in [i for i in range(len(player_list))]:
             conn = player_list[player_id].conn
+        if USING_HTML:
+            try:
+                conn.send(pack_websocket_msg(message))
+            except:
+                remove_player_by_conn(player_list[player_id])
+        else:
             try:
                 conn.send(message.encode(ENCODING))
             except:
@@ -534,37 +564,158 @@ def remove_player_by_conn(player):
             except:
                 pass
 
+def websocket_handshake(client_socket, client_data):
+    key = None
+    lines = client_data.split('\r\n')
+    for line in lines:
+        if line.startswith('Sec-WebSocket-Key:'):
+            key = line.split(': ')[1].strip()
+            break
+    if not key:
+        return False
+    magic_string = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+    sha1 = hashlib.sha1((key + magic_string).encode('utf-8'))
+    sec_key = base64.b64encode(sha1.digest()).decode('utf-8')
+    response = f"HTTP/1.1 101 Switching Protocols\r\n" \
+               f"Upgrade: websocket\r\n" \
+               f"Connection: Upgrade\r\n" \
+               f"Sec-WebSocket-Accept: {sec_key}\r\n\r\n"
+    client_socket.send(response.encode(ENCODING))
+    return True
+
+def parse_websocket_msg(data):
+    if not data:
+        return ""
+    opcode = data[0] & 0x0F
+    payload_len = data[1] & 0x7F
+    mask = data[1] & 0x80
+    if opcode != 1:
+        return ""
+    if payload_len == 126:
+        payload_len = int.from_bytes(data[2:4], byteorder='big')
+        mask_key = data[4:8]
+        payload_data = data[8:8+payload_len]
+    elif payload_len == 127:
+        payload_len = int.from_bytes(data[2:10], byteorder='big')
+        mask_key = data[10:14]
+        payload_data = data[14:14+payload_len]
+    else:
+        mask_key = data[2:6]
+        payload_data = data[6:6+payload_len]
+    decoded = bytearray()
+    for i in range(payload_len):
+        decoded.append(payload_data[i] ^ mask_key[i % 4])
+    return decoded.decode(ENCODING, errors='ignore').strip()
+
+def pack_websocket_msg(msg):
+    if not msg:
+        return b""
+    data = msg.encode(ENCODING)
+    payload_len = len(data)
+    frame = bytearray()
+    frame.append(0x81)
+    if payload_len <= 125:
+        frame.append(payload_len)
+    elif payload_len <= 65535:
+        frame.append(126)
+        frame.extend(payload_len.to_bytes(2, byteorder='big'))
+    else:
+        frame.append(127)
+        frame.extend(payload_len.to_bytes(8, byteorder='big'))
+    frame.extend(data)
+    return bytes(frame)
+
+def recv_from_socket(conn):
+    data = conn.recv(BUFFER_SIZE)
+    if not data:
+        return ""
+    return parse_websocket_msg(data)
+
+def send_to_socket(conn, message):
+    try:
+        conn.send(pack_websocket_msg(message))
+    except:
+        pass
+
 def handle_client(conn, addr):
     global player_id_counter, player_list,max_player_num
     player_name = ""
-    try:
-        conn.send("请输入你的游戏昵称：\n".encode(ENCODING))
-        player_name = conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
-        while not player_name:
-            conn.send("昵称不能为空！请重新输入：\n".encode(ENCODING))
+    if USING_HTML:
+        try:
+            # ====== 第一步：完成WebSocket握手 ======
+            handshake_data = conn.recv(1024).decode(ENCODING, errors='ignore')
+            if not websocket_handshake(conn, handshake_data):
+                print(f"[异常] {addr} WebSocket握手失败")
+                conn.close()
+                return
+            print(f"[成功] {addr} WebSocket握手完成")
+            send_to_socket(conn, "请输入你的游戏昵称：\n")
+            player_name = recv_from_socket(conn).strip()
+            while not player_name:
+                send_to_socket(conn, "昵称不能为空！请重新输入：\n")
+                player_name = recv_from_socket(conn).strip()
+            with lock:
+                create_player(player_id_counter,player_name,conn,max_player_num)
+                player_id_counter += 1
+                player = player_list[player_id_counter-1]
+
+            welcome_msg = f"[系统公告] 玩家【{player.nickname}】(ID:{player.id}) 加入游戏！\n"
+            broadcast(welcome_msg,[player.id])
+            send_to_player(player.id,f"加入成功！你的玩家ID：{player.id}\n当前在线人数：{len(player_list)}/{max_player_num}\n")
+            print(f"[系统] 新玩家连接：{addr} → 【{player.nickname}】(ID:{player.id})")
+
+            # 等待所有玩家加入
+            send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
+            while len(player_list) < max_player_num:
+                time.sleep(1)
+                send_to_player(player.id,f"等待中...{len(player_list)}/{max_player_num}\n")
+
+            # 随机分配魔女
+            killer_id = random.randint(0,max_player_num-1)
+            player_list[killer_id].killer = 1
+            send_to_player(killer_id, "恭喜你，你成为了【魔女】！请隐藏身份完成猎杀\n")
+            broadcast("所有玩家已加入，游戏正式开始！\n一名玩家已成为魔女，猎杀开始！\n")
+            game_start(player)
+        except Exception as e:
+            print(f"[异常-在handle_client函数中] 玩家【{player_name}】异常：{e}")
+        finally:
+            if conn:
+                try:
+                    for p in player_list:
+                        if p.conn == conn:
+                            remove_player_by_conn(p)
+                            break
+                except:
+                    pass
+    else:
+        try:
+            conn.send("请输入你的游戏昵称：\n".encode(ENCODING))
             player_name = conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
-        with lock:
-            create_player(player_id_counter,player_name,conn,max_player_num)
-            player_id_counter += 1
-            player = player_list[player_id_counter-1]
-        
-        welcome_msg = f"[系统公告] 玩家【{player.nickname}】(ID:{player.id}) 加入游戏！\n"
-        broadcast(welcome_msg,[0])
-        player.conn.send(f"加入成功！你的玩家ID：{player.id}\n当前在线人数：{len(player_list)}\n".encode(ENCODING))
-        print(f"[系统] 新玩家连接：{addr} → 【{player.nickname}】(ID:{player.id})")
-        send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
-        send_to_player(player.id,"-"*30+"\n")
-        while len(player_list) < max_player_num:
-            pass
-        player_list[random.randint(0,max_player_num-1)].killer = 1  #随机分配魔女身份
-        send_to_player(player.id,"所有玩家已加入，一名玩家已成为魔女，游戏开始\n")
-        send_to_player(player.id,"-"*30+"\n")
-        game_start(player)
-    except Exception as e:
-        print(f"[异常-在handle_cilent函数中] 玩家【{player_name}】异常：{e}")
-    finally:
-        if conn:
-            remove_player_by_conn(conn)
+            while not player_name:
+                conn.send("昵称不能为空！请重新输入：\n".encode(ENCODING))
+                player_name = conn.recv(BUFFER_SIZE).decode(ENCODING).strip()
+            with lock:
+                create_player(player_id_counter,player_name,conn,max_player_num)
+                player_id_counter += 1
+                player = player_list[player_id_counter-1]
+
+            welcome_msg = f"[系统公告] 玩家【{player.nickname}】(ID:{player.id}) 加入游戏！\n"
+            # broadcast(welcome_msg,[0])
+            player.conn.send(f"加入成功！你的玩家ID：{player.id}\n当前在线人数：{len(player_list)}\n".encode(ENCODING))
+            print(f"[系统] 新玩家连接：{addr} → 【{player.nickname}】(ID:{player.id})")
+            send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
+            send_to_player(player.id,"-"*30+"\n")
+            while len(player_list) < max_player_num:
+                pass
+            player_list[random.randint(0,max_player_num-1)].killer = 1  #随机分配魔女身份
+            send_to_player(player.id,"所有玩家已加入，一名玩家已成为魔女，游戏开始\n")
+            send_to_player(player.id,"-"*30+"\n")
+            game_start(player)
+        except Exception as e:
+            print(f"[异常-在handle_cilent函数中] 玩家【{player_name}】异常：{e}")
+        finally:
+            if conn:
+                remove_player_by_conn(conn)
 
 def main():
     global HOST, PORT, max_player_num
@@ -583,6 +734,11 @@ def main():
 
     max_player_num = int(input("输入玩家数量"))
     print(f"设置最大玩家数量为：{max_player_num}\n等待连接中")
+    USING_HTML = int(input("是否使用HTML格式进行消息传输？0-否，1-是"))
+    if USING_HTML:
+        print("已启用HTML格式进行消息传输")
+    else:
+        print("未启用HTML格式进行消息传输")
     while True:
         conn, addr = server_socket.accept()
         client_thread = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
@@ -602,6 +758,7 @@ def show_player(player):
     print(f"玩家距离列表：{player.distance}")
 
 #全局变量：
+USING_HTML = 0              # 是否使用HTML格式进行消息传输
 HOST = "0.0.0.0"                # 服务器IP地址
 PORT = 9999                     # 服务器端口
 BUFFER_SIZE = 1024              # 发送数据最大值
