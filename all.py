@@ -197,6 +197,7 @@ class Player:
                             j.life = 0
                             j.deadtime = get_time()
                             dead_list.append(j.id)
+                            j.dead_location = self.location
                             break
                     break
         elif killer_choose == "使用道具" and not self.bag:
@@ -221,6 +222,7 @@ class Player:
                     j.life = 0
                     j.deadtime = get_time()
                     dead_list.append(j.id)
+                    j.dead_location = self.location
                     break
 
 class Item:
@@ -282,11 +284,11 @@ class Meruru(Player):
         super().__init__(player_id,conn,player_num)
         self.name = "Meruru"
     def magic(self):
-        global player_list,dead_location
+        global player_list
         choose = ""
         if dead_list:
             for i in dead_list:
-                if player_list[i].location != self.location:
+                if player_list[i].dead_location != self.location:
                     send_to_player(self.id,"魔法使用失败：不在尸体发现地点\n")
                     return    
                 else:
@@ -322,12 +324,32 @@ class Anan(Player):
     def magic(self):
         send_to_player(self.id,"魔法暂不可使用")
 
-class Person4(Player):
+class Miria(Player):
     def __init__(self,player_id,conn,player_num):
         super().__init__(player_id,conn,player_num)
-        self.name = "Person4"
+        self.name = "Miria"
+        self.magic_used = 2
     def magic(self):
-        pass
+        global player_list
+        send_to_player(self.id,"选择一名玩家，与其互换背包与位置")
+        send_to_player(self.id,"可选列表")
+        choose_str = ""
+        for i in player_list:
+            if i.life:
+                choose_str += i.nickname + " "
+        send_to_player(self.id,choose_str + "\n")
+        aim = get_message(self.id,"你要与谁互换位置和背包")
+        for i in player_list:
+            if aim == i.nickname and i.life:
+                self.bag, i.bag = i.bag, self.bag
+                self.location, i.location = i.location, self.location
+                get_distance(self)
+                i.distance = get_distance(i)
+                send_to_player(self.id,"交换完成")
+                send_to_player(i.id,f"你与玩家{self.nickname}交换了位置与背包")
+                return
+        send_to_player(self.id,"魔法使用失败")
+
 
 def get_distance(player):
     global player_list,map_len,location_list
@@ -396,7 +418,7 @@ def create_player(player_id,player_name,conn,player_num):
         conn.send("人物创建完成\n".encode(ENCODING))
 
 def activate(player,n):
-    global player_list,dead_search,dead_location  #活动函数
+    global player_list,dead_search #活动函数
     if n != 0:
         for i in range(n):#5次搜证机会,搜证期间不可攻击
             get_distance(player)
@@ -456,7 +478,6 @@ def activate(player,n):
                     dead_search = 1 #尸体被发现，跳出循环
                     send_to_player(player.id,"你发现了一具尸体，进入搜证阶段\n")
                     broadcast(f"玩家{player.nickname}在{player.location}发现了一具尸体，进入搜证阶段\n")
-                    dead_location = player.location
                     break
 
 speech_finish = 0
@@ -853,8 +874,8 @@ dead_list = []                  # 全局死亡玩家列表(id)
 ticket = [0] * len(player_list) # 投票计数列表，索引对应玩家id，值对应票数
 location_list = ["医务室","淋浴房","日光房","杂物处","中庭","接客室","女厕","会客厅","玄关大厅","审判庭入口过道",
                 "食堂","厨房","审判庭","牢房","焚烧炉","惩罚室","娱乐室","工作室","2F大厅","图书室"]  # 地点列表，用于计算对应地点之间的距离
-p_list = [Shiro, Meruru, Anan, Person4] #人物类存储列表
-p_name_list = ["Shiro", "Meruru", "Anan", "Person4"]    # 人物类名称列表
+p_list = [Shiro, Meruru, Anan, Miria] #人物类存储列表
+p_name_list = ["Shiro", "Meruru", "Anan", "Miria"]    # 人物类名称列表
 time_start = [2026,1,6,9,00,0]  # 游戏的起始游戏时间
 time_real_start = time.time()   # 获取真实时间戳，用于计算时间流逝
 
