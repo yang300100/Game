@@ -20,8 +20,10 @@ class Player:
         self.message_len = [0] * (player_num + 1)     #收到通知前消息变化量
         self.deadtime = []  #死亡时间记录
         self.dead_location = ""  #死亡地点记录
+        self.dead_item = "" #死因记录
         self.jump_speak = 0  #是否跳过发言环节，跳过为1，不跳过为0
         self.send_message = 0   # 在发言阶段，此值为0时说明未被发送消息，发送消息后置1
+        self.last_attack_time = 0   #魔女杀人冷却
 
     def check_phone(self):
         global player_list
@@ -137,6 +139,9 @@ class Player:
     
     def attack(self):
         global time_start, player_list, time_real_start ,dead_list,room_item,location_list
+        if (time.time() - self.last_attack_time) / 60 <= 3:
+            send_to_player(self.id,"三分钟内不可再次杀人")
+            return
         if self.killer == 0 or int(time.time()-time_real_start) < 60:  # 开局前一小时以及普通人不能攻击
             send_to_player(self.id,"不可攻击其他玩家，跳过本回合\n")
             return
@@ -198,6 +203,8 @@ class Player:
                             j.deadtime = get_time()
                             dead_list.append(j.id)
                             j.dead_location = self.location
+                            j.dead_item = i.name
+                            self.last_attack_time = time.time()
                             break
                     break
         elif killer_choose == "使用道具" and not self.bag:
@@ -223,6 +230,8 @@ class Player:
                     j.deadtime = get_time()
                     dead_list.append(j.id)
                     j.dead_location = self.location
+                    j.dead_item = "徒手"
+                    self.last_attack_time = time.time()
                     break
 
 class Item:
@@ -232,16 +241,32 @@ class Item:
         self.get_time = time_item   #获取时间
         self.type = item_type #物品类型：情报/证据
 
+class Ema(Player):
+    def __init__(self, player_id, conn, player_num):
+        super().__init__(player_id, conn, player_num)
+        self.name = "Ema"
+    def magic(self):
+        pass
+
+class Noa(Player):
+    def __init__(self, player_id, conn, player_num):
+        super().__init__(player_id, conn, player_num)
+        self.name = "Noa"
+    def magic(self):
+        pass
+
+
 class Shiro(Player):
     def __init__(self,player_id,conn,player_num):
         super().__init__(player_id,conn,player_num)
         self.name = "Shiro"
     def magic(self):
-        self.magic_used = 0 #置0显示魔法已使用
         choose = 0
         while choose not in [1,2]:
             try:
-                choose = int(get_message(self.id,"使用魔法：伪证 \n1.将一项证据显示为伪证  2.创造一个伪证\n"))
+                send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/1次\n")
+                send_to_player(self.id,"使用魔法：伪证  请选择: \n")
+                choose = int(get_message(self.id,"1.将一项证据显示为伪证  2.创造一个伪证\n"))
             except:
                 choose = 0
                 send_to_player(self.id,"输入有误，重新输入\n")
@@ -263,6 +288,7 @@ class Shiro(Player):
                         send_to_player(self.id,"输入有误，重新输入\n")
                 self.bag[choose-1].name = "伪证：" + self.bag[choose-1].name
                 send_to_player(self.id,"你选择的证据已添加“伪证“标签\n")
+                self.magic_used = 0
         else:
             send_to_player(self.id,"输入伪造物品的名字，描述以及获得时间\n")
             name = get_message(self.id,"为伪证命名\n")
@@ -278,6 +304,7 @@ class Shiro(Player):
             false_item = Item("伪证："+name,describe,time_li,"情报")
             self.bag.append(false_item)
             send_to_player(self.id,"伪造完成，伪证已添加至背包\n")
+            self.magic_used = 0
 
 class Meruru(Player):
     def __init__(self,player_id,conn,player_num):
@@ -285,6 +312,8 @@ class Meruru(Player):
         self.name = "Meruru"
     def magic(self):
         global player_list
+        send_to_player(self.id,"使用魔法:验尸\n")
+        send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/1次\n")
         choose = ""
         if dead_list:
             for i in dead_list:
@@ -296,7 +325,7 @@ class Meruru(Player):
                         self.magic_used = 0 #置0显示魔法已使用
                         send_to_player(self.id,"验尸中...\n")
                         time.sleep(5)
-                        send_to_player(self.id,f"验尸完成！{player_list[i].nickname}的死亡时间为：{player_list[i].deadtime[1]}月{player_list[i].deadtime[2]}日{player_list[i].deadtime[3]}时{player_list[i].deadtime[4]}分\n")
+                        send_to_player(self.id,f"验尸完成！{player_list[i].nickname}的死亡时间为：{player_list[i].deadtime[1]}月{player_list[i].deadtime[2]}日{player_list[i].deadtime[3]}时{player_list[i].deadtime[4]}分,死于{player_list[i].dead_item}攻击\n")
                         choose = get_message(self.id,f"是否要伪造验尸报告？（是/否）\n")
                         while choose not in ["是","否"]:
                             choose = get_message(self.id,"输入有误，重新输入\n")
@@ -308,11 +337,15 @@ class Meruru(Player):
                                     send_to_player(self.id,"时间输入长度有误，重新输入\n")
                                 elif not time_false.isdigit():
                                     send_to_player(self.id,"时间输入格式有误，重新输入\n")
-                            self.bag.append(Item("梅露露的验尸报告",f"报告显示{player_list[i].nickname}的死亡时间为：{int(time_false[4:6])}月{int(time_false[6:8])}日{int(time_false[8:10])}时{int(time_false[10:])}分",get_time(),"情报"))
+                            dead_item = get_message(self.id,"填写玩家的死亡原因:")
+                            player_list[i].dead_item = dead_item
+                            self.bag.append(Item("梅露露的验尸报告",f"报告显示{player_list[i].nickname}的死亡时间为：{int(time_false[4:6])}月{int(time_false[6:8])}日{int(time_false[8:10])}时{int(time_false[10:])}分,死于{player_list[i].dead_item}攻击",get_time(),"情报"))
                             send_to_player(self.id,"伪造完成，验尸报告已添加至背包\n")
+                            self.magic_used -= 1
                         else:
-                            self.bag.append(Item("梅露露的验尸报告",f"报告显示{player_list[i].nickname}的死亡时间为：{player_list[i].deadtime[1]}月{player_list[i].deadtime[2]}日{player_list[i].deadtime[3]}时{player_list[i].deadtime[4]}分",get_time(),"情报"))
+                            self.bag.append(Item("梅露露的验尸报告",f"报告显示{player_list[i].nickname}的死亡时间为：{player_list[i].deadtime[1]}月{player_list[i].deadtime[2]}日{player_list[i].deadtime[3]}时{player_list[i].deadtime[4]}分,死于{player_list[i].dead_item}攻击",get_time(),"情报"))
                             send_to_player(self.id,"验尸报告已添加至背包\n")
+                            self.magic_used -= 1
         else:
             send_to_player(self.id,"魔法使用失败：暂未发现尸体\n")
 
@@ -322,7 +355,8 @@ class Anan(Player):
         self.name = "Anan"
         self.magic_used = 3
     def magic(self):
-        send_to_player(self.id,"魔法暂不可使用")
+        send_to_player(self.id,"你的魔法仅可在讨论环节使用\n")
+        send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/3次\n")
 
 class Miria(Player):
     def __init__(self,player_id,conn,player_num):
@@ -331,24 +365,27 @@ class Miria(Player):
         self.magic_used = 2
     def magic(self):
         global player_list
-        send_to_player(self.id,"选择一名玩家，与其互换背包与位置")
-        send_to_player(self.id,"可选列表")
+        send_to_player(self.id,"使用魔法:互换\n")
+        send_to_player(self.id,"选择一名玩家，与其互换背包与位置\n")
+        send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/2次\n")
+        send_to_player(self.id,"可选玩家列表\n")
         choose_str = ""
         for i in player_list:
             if i.life:
                 choose_str += i.nickname + " "
         send_to_player(self.id,choose_str + "\n")
-        aim = get_message(self.id,"你要与谁互换位置和背包")
+        aim = get_message(self.id,"你要与谁互换位置和背包\n")
         for i in player_list:
             if aim == i.nickname and i.life:
                 self.bag, i.bag = i.bag, self.bag
                 self.location, i.location = i.location, self.location
                 get_distance(self)
                 i.distance = get_distance(i)
-                send_to_player(self.id,"交换完成")
-                send_to_player(i.id,f"你与玩家{self.nickname}交换了位置与背包")
+                self.magic_used -= 1
+                send_to_player(self.id,"交换完成\n")
+                send_to_player(i.id,f"你与玩家{self.nickname}交换了位置与背包\n")
                 return
-        send_to_player(self.id,"魔法使用失败")
+        send_to_player(self.id,"魔法使用失败\n")
 
 
 def get_distance(player):
@@ -393,12 +430,11 @@ def get_time():
 
 def create_player(player_id,player_name,conn,player_num):
     global player_list,p_name_list
-    print("开始选择人物")
     if USING_HTML:
-        send_to_socket(conn, "人物列表：Shiro Person2 Person3 Person4\n")
+        send_to_socket(conn, "人物列表：Shiro, Meruru, Anan, Miria\n")
         send_to_socket(conn, "请玩家选择人物：\n")
     else:
-        conn.send("人物列表：Shiro Person2 Person3 Person4\n".encode(ENCODING))
+        conn.send("人物列表：Shiro, Meruru, Anan, Miria\n".encode(ENCODING))
         conn.send("请玩家选择人物：\n".encode(ENCODING))
     while True:
         print("人物遍历查询中")
@@ -474,15 +510,19 @@ def activate(player,n):
                     player.attack()
             get_distance(player)
             for i in player.distance:
-                if not i and player_list[i].life == 1 and not player.killer:
+                if not i and player_list[i].life == 0 and not player.killer:
                     dead_search = 1 #尸体被发现，跳出循环
                     send_to_player(player.id,"你发现了一具尸体，进入搜证阶段\n")
-                    broadcast(f"玩家{player.nickname}在{player.location}发现了一具尸体，进入搜证阶段\n")
+                    send_to_player(player.id,f"玩家{player.nickname}在{player.location}发现了一具尸体，进入搜证阶段\n")
                     break
 
 speech_finish = 0
 def end_speak(player):
-    global player_list,speech_finish
+    global player_list
+    send_to_player(player.id,"请等待所有玩家搜证完成")
+    while any(item.location != "审判庭" for item in player_list):
+        pass
+    send_to_player(player.id,"所有玩家已来到'审判庭',开始讨论")
     end_speech = 0
     speech_finish = 0
     while end_speech < len(player_list):
@@ -520,19 +560,19 @@ def end_speak(player):
                     send_to_player(i,"\n")
                     speech = get_message(i,"请输入你要提交的证据,输入其他跳过发言：\n")
                     if speech in item_list:
-                        broadcast(f"玩家{player.nickname}提交了证据：“{speech}”\n")
+                        send_to_player(player.id,f"玩家{player.nickname}提交了证据：“{speech}”\n")
                         it = player.bag[item_list.index(speech)]#取出物品对象
-                        broadcast(f"名称：{it.name}\n描述：{it.describe}\n获取时间：{it.get_time[1]}月{it.get_time[2]}日 {it.get_time[3]}:{it.get_time[4]}\n类型：{it.type}\n")
+                        send_to_player(player.id,f"名称：{it.name}\n描述：{it.describe}\n获取时间：{it.get_time[1]}月{it.get_time[2]}日 {it.get_time[3]}:{it.get_time[4]}\n类型：{it.type}\n")
                         player.bag.remove(item_list.index(speech))
                         if player.jump_speak:
-                            broadcast("Anan:[闭嘴]")
-                            broadcast("-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
+                            send_to_player(player.id,"Anan:[闭嘴]")
+                            send_to_player(player.id,"-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
                             speech_finish = 1
                             player.jump_speak = 0
                         else:
                             message = get_message(i,"请输入你的发言内容:\n")
-                            broadcast(f"{player.nickname}：{message}\n")
-                            broadcast("-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
+                            send_to_player(player.id,f"{player.nickname}：{message}\n")
+                            send_to_player(player.id,"-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
                             speech_finish = 1
                     else:
                         send_to_player(i,"跳过发言环节\n")
@@ -548,7 +588,7 @@ def end_speak(player):
                     send_to_player(player.id,"请等待其他玩家发言\n")
             speech_finish = 0
             player.send_message = 0
-    broadcast("所有玩家全部跳过发言，进入总结阶段，总结阶段中每名玩家只能发言一次\n")
+    send_to_player(player.id,"所有玩家全部跳过发言，进入总结阶段，总结阶段中每名玩家只能发言一次\n")
     for i in range(len(player_list)):
         while not speech_finish:
             if player_list[i].life == 0:
@@ -557,8 +597,8 @@ def end_speak(player):
                 continue
             if i == player.id:
                 message = get_message(i,"请输入你的总结发言内容:\n")
-                broadcast(f"{player_list[i].nickname}：{message}\n")
-                broadcast("-"*10 +f"{player.nickname}总结发言结束"+"-"*10+"\n")
+                send_to_player(player.id,f"{player_list[i].nickname}：{message}\n")
+                send_to_player(player.id,"-"*10 +f"{player.nickname}总结发言结束"+"-"*10+"\n")
                 speech_finish = 1
             elif i != player.id and not player.send_message:
                 player.send_message = 1
@@ -570,31 +610,38 @@ def game_start(player):
     global ticket,player_list
     print("-"*11,"游戏开始","-"*11,"\n")
     # 第一阶段-自由活动直到尸体被发现
-    activate(player,0)#参数0表示不指定次数，检测到尸体后跳出循环
-    #尸体被发现，进入搜证阶段
-    #第二阶段-搜证阶段，每人5次行动机会
-    activate(player,5)#参数5表示指定行动次数
-    broadcast("搜证阶段结束，进入发言阶段\n")
-    #第三阶段-发言阶段，所有证据讨论完成后再进行一轮补充说明，最后结束进入投票
-    end_speak(player)
-    broadcast("发言阶段结束，进入投票阶段\n")
-    #第四阶段-投票阶段
-    broadcast("请玩家进行投票，输入你要投票的玩家昵称\n")
-    answer = get_message(player.id,"投票开始，输入你要投票的玩家昵称：")
-    for i in player_list:
-        send_to_player(player.id,f"“{i.nickname}” ")
-    send_to_player(player.id,"\n")
-    while answer not in [i.nickname for i in player_list]:
-        get_message(player.id,"输入有误，重新输入\n")
-    ticket[[i.nickname for i in player_list].index(answer)] += 1
-    send_to_player(f"你投票给了玩家{answer}\n")
-    while sum(ticket) < len(player_list):
-        send_to_player(player.id,"请等待其他玩家投票\n")
-    max_vote = max(ticket)
-    if player_list[ticket.index(max_vote)].killer:
-        broadcast(f"玩家{player_list[ticket.index(max_vote)].nickname}被投票出局，魔女失败！游戏结束\n")
+    while any(item.killer == 1 and item.life > 0 for item in player_list) or any(item.killer == 0 and item.life > 0 for item in player_list):
+        send_to_player(player.id,"自由活动开始,所有玩家可自行探索")
+        activate(player,0)#参数0表示不指定次数，检测到尸体后跳出循环
+        #尸体被发现，进入搜证阶段
+        #第二阶段-搜证阶段，每人5次行动机会
+        activate(player,5)#参数5表示指定行动次数
+        send_to_player(player.id,"搜证阶段结束，进入发言阶段\n")
+        #第三阶段-发言阶段，所有证据讨论完成后再进行一轮补充说明，最后结束进入投票
+        end_speak(player)
+        send_to_player(player.id,"发言阶段结束，进入投票阶段\n")
+        #第四阶段-投票阶段
+        send_to_player(player.id,"请玩家进行投票，输入你要投票的玩家昵称\n")
+        answer = get_message(player.id,"投票开始，输入你要投票的玩家昵称：")
+        list_str = ""
+        for i in player_list:
+            list_str += i.nickname +" "
+        send_to_player(player.id,f"{list_str}\n")
+        while answer not in [i.nickname for i in player_list]:
+            get_message(player.id,"输入有误，重新输入\n")
+        ticket[[i.nickname for i in player_list].index(answer)] += 1
+        send_to_player(player.id,f"你投票给了玩家{answer}\n")
+        while sum(ticket) < len(player_list):
+            send_to_player(player.id,"请等待其他玩家投票\n")
+        max_vote = max(ticket)
+        player_list[ticket.index(max_vote)].life = 0
+        send_to_player(player.id,f"玩家{player_list[ticket.index(max_vote)].nickname}被处刑")
+    
+    if any(item.killer == 1 and item.life > 0 for item in player_list):
+        send_to_player(player.id,"游戏结束,魔女胜利,所有玩家均被杀死或魔女化")
     else:
-        broadcast(f"玩家{player_list[ticket.index(max_vote)].nickname}被投票出局，魔女获胜！游戏结束\n")
+        send_to_player(player.id,"游戏结束,魔女失败,场上不存在魔女化的玩家")
+
 
 
 def get_message(player_id,message=""):
@@ -735,7 +782,7 @@ def send_to_socket(conn, message):
         pass
 
 def handle_client(conn, addr):
-    global player_id_counter, player_list,max_player_num
+    global player_id_counter, player_list,max_player_num,killer_id
     player_name = ""
     if USING_HTML:
         try:
@@ -764,14 +811,14 @@ def handle_client(conn, addr):
             # 等待所有玩家加入
             send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
             while len(player_list) < max_player_num:
-                time.sleep(1)
+                time.sleep(2)
                 send_to_player(player.id,f"等待中...{len(player_list)}/{max_player_num}\n")
 
             # 随机分配魔女
-            killer_id = random.randint(0,max_player_num-1)
             player_list[killer_id].killer = 1
-            send_to_player(killer_id, "恭喜你，你成为了【魔女】！请隐藏身份完成猎杀\n")
-            broadcast("所有玩家已加入，游戏正式开始！\n一名玩家已成为魔女，猎杀开始！\n")
+            if killer_id == player.id:
+                send_to_player(killer_id, "恭喜你，你成为了【魔女】！请隐藏身份完成猎杀\n")
+            send_to_player(player.id,"所有玩家已加入，游戏正式开始！\n一名玩家已成为魔女，猎杀开始！\n")
             game_start(player)
         except Exception as e:
             print(f"[异常-在handle_client函数中] 玩家【{player_name}】异常：{e}")
@@ -797,21 +844,21 @@ def handle_client(conn, addr):
                 player = player_list[player_id_counter-1]
 
             welcome_msg = f"[系统公告] 玩家【{player.nickname}】(ID:{player.id}) 加入游戏！\n"
-            # broadcast(welcome_msg,[0])
+            broadcast(welcome_msg,[0])
             player.conn.send(f"加入成功！你的玩家ID：{player.id}\n当前在线人数：{len(player_list)}\n".encode(ENCODING))
             print(f"[系统] 新玩家连接：{addr} → 【{player.nickname}】(ID:{player.id})")
             send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
             send_to_player(player.id,"-"*30+"\n")
             send_to_player(player.id,f"等待玩家全部加入，当前加入{len(player_list)}/{max_player_num}\n")
             while len(player_list) < max_player_num:
-                time.sleep(1)
+                time.sleep(2)
                 send_to_player(player.id,f"等待中...{len(player_list)}/{max_player_num}\n")
 
             # 随机分配魔女
-            killer_id = random.randint(0,max_player_num-1)
             player_list[killer_id].killer = 1
-            send_to_player(killer_id, "恭喜你，你成为了【魔女】！请隐藏身份完成猎杀\n")
-            broadcast("所有玩家已加入，游戏正式开始！\n一名玩家已成为魔女，猎杀开始！\n")
+            if killer_id == player.id:
+                send_to_player(killer_id, "恭喜你，你成为了【魔女】！请隐藏身份完成猎杀\n")
+            send_to_player(player.id,"所有玩家已加入，游戏正式开始！\n一名玩家已成为魔女，猎杀开始！\n")
             game_start(player)
         except Exception as e:
             print(f"[异常-在handle_cilent函数中] 玩家【{player_name}】异常：{e}")
@@ -820,7 +867,7 @@ def handle_client(conn, addr):
                 remove_player_by_conn(conn)
 
 def main():
-    global HOST, PORT, max_player_num
+    global HOST, PORT, max_player_num , USING_HTML,killer_id
     """服务端主函数：启动监听，接收客户端连接"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -835,6 +882,8 @@ def main():
 
 
     max_player_num = int(input("输入玩家数量"))
+    killer_id = random.randint(0,max_player_num-1)
+    
     print(f"设置最大玩家数量为：{max_player_num}\n等待连接中")
     USING_HTML = int(input("是否使用HTML格式进行消息传输？0-否，1-是"))
     if USING_HTML:
