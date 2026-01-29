@@ -272,14 +272,19 @@ class Noa(Player):
         super().__init__(player_id, conn, player_num)
         self.name = "Noa"
         random.choice(location_list).item.append(Item("诺亚的画作","诺亚不使用魔法时绘制的画作，似乎并不想让别人看到",[2026,1,6,9,0,0],"道具"))
+        for i in range(4):
+            random.choice(location_list).item.append(Item("诺亚的颜料","高品质的颜料，诺亚可以使用此颜料创造画作",[2026,1,6,9,0,0],"道具"))
+        # random.choice(location_list).item.append(Item("颜料","高品质的颜料，诺亚可以使用此颜料创造画作",[2026,1,6,9,0,0],"道具"))
         global noa_picture_search
         noa_picture_search = 0
     def magic(self):
-        if self.killer:
-            pass
+        if any([item.name == "诺亚的颜料" for item in self.bag]):
+            if self.killer:
+                pass
+            else: 
+                pass
         else:
-            pass
-
+            send_to_player(self.id,"你没有找到颜料")
 
 class Shiro(Player):
     def __init__(self,player_id,conn,player_num):
