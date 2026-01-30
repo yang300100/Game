@@ -4,6 +4,53 @@ import socket
 import threading
 import base64
 import hashlib
+import re
+from openai import OpenAI
+from typing import List, Union
+
+#大模型接入：
+class OpenAICompatibleClient:
+    def __init__(self, model: str, api_key: str, base_url: str):
+        self.model = model
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
+
+    def generate(self, prompt: str, system_prompt: str) -> str:
+        try:
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': prompt}
+            ]
+            response = self.client.chat.completions.create(model=self.model, messages=messages, stream=False) # type: ignore
+            print("模型响应成功")
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"调用模型发生错误{e}")
+            return "错误：调用语言模型服务时出错"
+
+
+AGENT_SYSTEM_PROMPT = """
+你是一个侦探。
+用户在下一句对话中会提交几个道具，道具提交后，用户会向你阐述如何使用提交的道具完成凶杀案
+你的任务是分析用户的阐述，并判断用户的阐述是否符合逻辑并可行，如果可行，继续输出可能留下的线索，如果不可行，则将item留空。
+
+#！！！重要事项！！！：
+1. 严格按照行动格式中所描述的格式输出
+2. ！！！不要想象道具可能的用途！！！分析用户的阐述中是否有明确说明如何使用，对于没有明确说明的部分忽略
+3. 如果计划不可行，则将item留空
+4. 在一轮对话中，所有回答中只能出现一个“Thought”“Answer”与“Item”，不要输出多个“Thought”“Answer”与“Item”
+5. 在道具的描述中，不要出现类似“可能”等不确定的词语
+#行动格式:
+你的回答必须严格遵循以下格式。首先是你的思考过程，然后是你的答案和可能留下的线索。所有回答中只出现一个“Thought””Answer“与”Item“
+Thought: [这里是你的思考过程和下一步计划]
+Answer：[这里只出现“可行/不可行”]
+item：[这里是可能留下的线索，如果不可行，则输出一个空字符串。
+如果可行，则输出格式为：“名称：xxxx  描述：xxxxx  类型：（道具或情报）”]
+
+#任务完成:
+当用户在3次回答中仍没有说服你接受用户的阐述，你必须在`Answer:`字段后使用`finish(answer="...")`来输出最终答案，最终答案只能从“可行”与“不可行”中选择一个
+请开始吧!
+"""
+
 
 class Player:
     def __init__(self,player_id,conn,player_num):
@@ -124,7 +171,11 @@ class Player:
                 seen_people.add(i)
             time.sleep(1)
         #到达地点后，获取其中物品
-        room_id = location_list.index(self.location)
+
+        for i in location_list:
+            if i.name == self.location:
+                room_id = i.id
+
         if not location_list[room_id].item:
             send_to_player(self.id,f"你在{self.location}没有发现任何物品\n")
             return
@@ -176,45 +227,53 @@ class Player:
                 send_to_player(self.id,f"“{i.name}”")
                 item_name_list.append(i.name)
             send_to_player(self.id,"\n")
-            item_choose = ""
-            while item_choose not in item_name_list:
-                item_choose = get_message(self.id,"输入道具名称\n")
-            for i in self.bag[:]:#遍历原列表副本，防止下标计数错误
-                if i.name == item_choose and i.type == "情报":
-                    send_to_player(self.id,"攻击失败：情报类物品不可用于攻击\n")
-                    break
-                am_or_pm = ""
-                if i.name == item_choose and i.type == "物品":
-                    if 6 < get_time()[3] < 12:
-                        am_or_pm="上午"
-                    elif 12 <= get_time()[3] < 19:
-                        am_or_pm="下午"
-                    elif 19 <= get_time()[3] <= 24:
-                        am_or_pm="晚上"
-                    elif 0 <= get_time()[3] <= 6:
-                        am_or_pm="凌晨"
-                    for j in location_list:
-                        if j.name == self.lcoation:
-                            j.item.append(Item(f"{choose}的尸体",f"被杀害的尸体，死亡时间大约在{get_time()[1]}月{get_time()[2]}日的{am_or_pm}",[2026,1,6,9,00,0],"情报"))
-                            j.item.append(Item("凶器："+ i.name, i.describe, [2026,1,6,9,00,0], "情报"))
-                    # room_item[location_list.index(self.location)].append(Item(f"{choose}的尸体",f"被杀害的尸体，死亡时间大约在{get_time()[1]}月{get_time()[2]}日的{am_or_pm}",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
-                    # room_item[location_list.index(self.location)].append(Item("凶器："+ i.name, i.describe, i.get_time, "情报")) #将使用后的道具留在现场，并添加凶器标签
-                    #给所有距离小于15的玩家添加物品：奇怪的声音
-                    for j in range(0,len(self.distance)):
-                        if self.distance[j] <= 15 and player_list[j].id != self.id:
-                            player_list[j].bag.append(Item("奇怪的声音",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到附近传来了一些奇怪的声音",get_time(),"情报"))
-                    self.bag.remove(i)
-                    send_to_player(self.id,f"道具“{i.name}”已使用\n")
-                    for j in player_list:
-                        if j.nickname == choose:
-                            j.life = 0
-                            j.deadtime = get_time()
-                            dead_list.append(j.id)
-                            j.dead_location = self.location
-                            j.dead_item = i.name
-                            self.last_attack_time = time.time()
-                            break
-                    break
+
+            choose_end = 0
+            choose_str = []
+            while not choose_end:
+                item_choose = ""
+                send_to_player(self.id,"当前已选择的物品：" + "".join(choose_str) + "\n")
+                while item_choose not in item_name_list:
+                    item_choose = get_message(self.id,"输入道具名称进行选择，输入“结束”结束选择\n")
+                for i in self.bag[:]:                               #遍历原列表副本，防止下标计数错误
+                    if i.name == item_choose and i.type == "情报":
+                        send_to_player(self.id,"使用失败：情报类物品不可用于攻击\n")
+                        continue
+                    if i.name == item_choose and i.type == "物品":
+                        pass
+                        choose_str += i.name + ","
+                    if item_choose == "结束":
+                        choose_end = 1
+
+            answer,item_llm = analyze_murder_plan(self,"".join(choose_str))
+
+            if answer:
+                for i in self.bag:#移除选择的物品
+                    if i.name in choose_str:
+                        self.bag.remove(i)
+                for i in location_list:
+                    if i.name == self.location:
+                        if item_llm:
+                            for j in item_llm:
+                                i.item.append(Item(j[0],j[1],get_time(),j[2]))
+
+                for j in location_list:
+                    if j.name == self.location:
+                        j.item.append(Item(f"{choose}的尸体",f"被杀害的尸体",[2026,1,6,9,00,0],"情报"))
+                #给所有距离小于15的玩家添加物品：奇怪的声音
+                for j in range(0,len(self.distance)):
+                    if self.distance[j] <= 15 and player_list[j].id != self.id:
+                        player_list[j].bag.append(Item("奇怪的声音",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到附近传来了一些奇怪的声音",get_time(),"情报"))
+                for j in player_list:
+                    if j.nickname == choose:
+                        j.life = 0
+                        j.deadtime = get_time()
+                        dead_list.append(j.id)
+                        j.dead_location = self.location
+                        j.dead_item = "道具"
+                        self.last_attack_time = time.time()
+                        break
+                # break
         elif killer_choose == "使用道具" and not self.bag:
             send_to_player(self.id,"攻击失败：无道具\n")
         else:
@@ -224,19 +283,9 @@ class Player:
                     player_list[j].bag.append(Item("奇怪的声音",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到哪里传来了一些奇怪的声音",get_time(),"情报"))
             for j in player_list:
                 if j.nickname == choose:
-                    am_or_pm = ""
-                    if 6 < get_time()[3] < 12:
-                        am_or_pm="上午"
-                    elif 12 <= get_time()[3] < 19:
-                        am_or_pm="下午"
-                    elif 19 <= get_time()[3] <= 24:
-                        am_or_pm="晚上"
-                    elif 0 <= get_time()[3] <= 6:
-                        am_or_pm="凌晨"
-                    # room_item[location_list.index(self.location)].append(Item(f"{choose}的尸体",f"被杀害的尸体，死亡时间大约在{get_time()[1]}月{get_time()[2]}日的{am_or_pm}",[2026,1,6,9,00,0],"情报")) #在现场留下尸体
                     for i in location_list:
-                        if i.name == self.lcoation:
-                            i.item.append(Item(f"{choose}的尸体",f"被杀害的尸体，死亡时间大约在{get_time()[1]}月{get_time()[2]}日的{am_or_pm}",[2026,1,6,9,00,0],"情报"))
+                        if i.name == self.location:
+                            i.item.append(Item(f"{choose}的尸体",f"被杀害的尸体",[2026,1,6,9,00,0],"情报"))
                     j.life = 0
                     j.deadtime = get_time()
                     dead_list.append(j.id)
@@ -330,7 +379,7 @@ class Shiro(Player):
                     send_to_player(self.id,"时间输入长度有误，重新输入\n")
                 elif not time_false.isdigit():
                     send_to_player(self.id,"时间输入格式有误，重新输入\n")
-            time_li = [int(time_false[:4]),int(time_false[4:6]),int(time_false[6:8]),int(time_false[8:10]),int(time_false[10:])]
+            time_li = [str(time_false[:4]),str(time_false[4:6]),str(time_false[6:8]),str(time_false[8:10]),str(time_false[10:])]
             false_item = Item("伪证："+name,describe,time_li,"情报")
             self.bag.append(false_item)
             send_to_player(self.id,"伪造完成，伪证已添加至背包\n")
@@ -344,7 +393,6 @@ class Meruru(Player):
         global player_list
         send_to_player(self.id,"使用魔法:验尸\n")
         send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/1次\n")
-        choose = ""
         if dead_list:
             for i in dead_list:
                 if player_list[i].dead_location != self.location:
@@ -369,7 +417,7 @@ class Meruru(Player):
                                     send_to_player(self.id,"时间输入格式有误，重新输入\n")
                             dead_item = get_message(self.id,"填写玩家的死亡原因:")
                             player_list[i].dead_item = dead_item
-                            self.bag.append(Item("梅露露的验尸报告",f"报告显示{player_list[i].nickname}的死亡时间为：{int(time_false[4:6])}月{int(time_false[6:8])}日{int(time_false[8:10])}时{int(time_false[10:])}分,死于{player_list[i].dead_item}攻击",get_time(),"情报"))
+                            self.bag.append(Item("梅露露的验尸报告",f"报告显示{player_list[i].nickname}的死亡时间为：{str(time_false[4:6])}月{str(time_false[6:8])}日{str(time_false[8:10])}时{str(time_false[10:])}分,死于{player_list[i].dead_item}攻击",get_time(),"情报"))
                             send_to_player(self.id,"伪造完成，验尸报告已添加至背包\n")
                             self.magic_used -= 1
                         else:
@@ -416,6 +464,107 @@ class Miria(Player):
                 send_to_player(i.id,f"你与玩家{self.nickname}交换了位置与背包\n")
                 return
         send_to_player(self.id,"魔法使用失败\n")
+
+
+#攻击可行性
+def analyze_murder_plan(player, items):
+    global API_KEY, BASE_URL, MODEL_ID
+    """
+    分析谋杀计划可行性，支持多物品解析
+    Args:
+        items: 用户提交的道具字符串，例如 "箭，绳子，木棍"
+    Returns:
+        List: [is_feasible, clues_list]
+            - is_feasible (bool): True表示最终可行，False表示不可行
+            - clues_list (List[List[str]]): 最终轮次返回的线索列表，每个线索为 [名称, 描述, 类型]。
+                如果最终判定为不可行，或item为空，返回空列表
+    """
+    llm = OpenAICompatibleClient(
+        model=MODEL_ID,
+        api_key=API_KEY,
+        base_url=BASE_URL
+    )
+    prompt_history = [f"用户提交的道具:{items}"]
+    send_to_player(player.id, "提交的道具：" + items + "\n")
+    final_feasible = False
+    final_output = ""  # 只保存最后一轮的模型输出
+    send_to_player(player.id, "你有三次机会阐述你要如何使用你所提交的道具\n")
+
+    for i in range(3):
+        send_to_player(player.id, f"-----第{i + 1}次阐述-----\n")
+        user_input = get_message(player.id, "请阐述你要如何使用你提交的道具：\n")
+        prompt_history.append(f"用户阐述{i + 1}: {user_input}")
+        full_prompt = "\n".join(prompt_history)
+        llm_output = llm.generate(full_prompt, system_prompt=AGENT_SYSTEM_PROMPT)
+        print(f"模型输出：\n{llm_output}\n")
+        prompt_history.append(llm_output)
+        final_output = llm_output  # 更新最后一轮输出
+        # 提取 Thought 和 Answer
+        thought_match = re.search(r"Thought[：:]\s*(.+?)(?=\n\s*Answer[：:])", llm_output, re.DOTALL)
+        answer_match = re.search(r"Answer[：:]\s*(.+?)(?=\n|item[：:]|$)", llm_output, re.DOTALL)
+        if not answer_match:
+            send_to_player(player.id, "解析错误，无法获取模型判断结果\n")
+            continue
+        action_str = answer_match.group(1).strip()
+        # 检查是否是 finish 调用
+        finish_match = re.search(r'finish\(answer=["\']([^"\']+)["\']\)', action_str)
+        if finish_match:
+            final_answer = finish_match.group(1)
+            final_feasible = (final_answer == "可行")
+            print(f"任务完成，最终答案{final_answer}\n")
+            break
+        # 检查普通答案，判断当前轮次是否可行
+        is_feasible_this_round = False
+        if "可行" in action_str and "不可行" not in action_str:
+            is_feasible_this_round = True
+            final_feasible = True
+        elif "不可行" in action_str:
+            final_feasible = False
+        # 如果不可行且不是最后一轮，提示重新阐述
+        if not is_feasible_this_round and i < 2:
+            if thought_match:
+                thought_content = thought_match.group(1).strip()
+                send_to_player(player.id, f"模型推理：\n{thought_content}\n")
+            send_to_player(player.id, "模型不认可你的阐述，请重新阐述提交道具的用法\n")
+            continue
+        # 如果可行且不是最后一轮，询问用户是否认同
+        if is_feasible_this_round and i < 2:
+            if thought_match:
+                thought_content = thought_match.group(1).strip()
+                send_to_player(player.id, f"模型推理：\n{thought_content}\n")
+            user_confirm = get_message(player.id, "模型认为方案可行，你是否认同模型的推理？(是/否)：").strip().lower()
+            if user_confirm in ['是', 'y', 'yes', '认同', '确认', '对', '正确']:
+                print("用户认同模型判断，阐述结束\n")
+                break
+            else:
+                print("用户不认同，继续下一轮阐述\n")
+                # 用户不认同时，重置final_feasible，因为最终结果应该以最后一轮为准
+                final_feasible = False
+                continue
+    clues = []
+    if final_feasible:
+        # 从最后一轮输出中解析item部分
+        item_match = re.search(r"item[：:]\s*(.+?)(?=\n\s*(?:Thought|Answer)|$)", final_output, re.DOTALL)
+        if item_match:
+            item_str = item_match.group(1).strip()
+            # 去掉可能的引号
+            item_str = item_str.strip('"\'')
+            if item_str:
+                # 【关键修改】使用 findall 查找所有物品条目，支持描述中包含空格
+                pattern = r"名称[：:]\s*(.+?)\s+描述[：:]\s*(.+?)\s+类型[：:]\s*([^\s]+)"
+                matches = re.findall(pattern, item_str)
+                for match in matches:
+                    name, desc, type_ = match
+                    clues.append([
+                        name.strip(),
+                        desc.strip(),
+                        type_.strip()
+                    ])
+                if not clues:
+                    send_to_player(player.id, "警告：未从item中解析出任何线索\n")
+    return [final_feasible, clues]
+
+
 
 
 # def get_distance(player):
@@ -582,7 +731,7 @@ def end_speak(player):
                     end_speech += 1
                     speech_finish = 1
                 
-                if i == player.id and i.name == "Anan" and i.magic_used > 0:
+                if i == player.id and player_list[i].name == "Anan" and player_list[i].magic_used > 0:
                     send_to_player(player.id,"你可以发动魔法，输入一名玩家的昵称，使得此玩家出示证据后跳过发言一次\n")
                     send_to_player(player.id,"可选玩家：")
                     name_str = ""
@@ -915,7 +1064,7 @@ def handle_client(conn, addr):
                 remove_player_by_conn(conn)
 
 def main():
-    global HOST, PORT, max_player_num , USING_HTML,killer_id
+    global HOST, PORT, max_player_num , USING_HTML,killer_id,ticket
     """服务端主函数：启动监听，接收客户端连接"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -931,7 +1080,7 @@ def main():
 
     max_player_num = int(input("输入玩家数量"))
     killer_id = random.randint(0,max_player_num-1)
-    
+    ticket = [0] * max_player_num
     print(f"设置最大玩家数量为：{max_player_num}\n等待连接中")
     USING_HTML = int(input("是否使用HTML格式进行消息传输？0-否，1-是"))
     if USING_HTML:
@@ -968,34 +1117,38 @@ max_player_num = 0              # 设置最大游玩人数，达到最大游玩�
 dead_search = 0                 # 死者是否被发现，0-未被发现，1-已被发现
 player_list = []                # 全局玩家列表
 dead_list = []                  # 全局死亡玩家列表(id)
-ticket = [0] * len(player_list) # 投票计数列表，索引对应玩家id，值对应票数
+ # 投票计数列表，索引对应玩家id，值对应票数
 location_list = []  # 地点列表，用于计算对应地点之间的距离
 p_list = [Shiro, Meruru, Anan, Miria] #人物类存储列表
 p_name_list = ["Shiro", "Meruru", "Anan", "Miria"]    # 人物类名称列表
 time_start = [2026,1,6,9,00,0]  # 游戏的起始游戏时间
 time_real_start = time.time()   # 获取真实时间戳，用于计算时间流逝
+API_KEY = "ollama"
+BASE_URL = "http://localhost:11434/v1"
+MODEL_ID = "deepseek-r1:14b"
+
 
 # A  B  C  D  E  F  G  H  I  J  K  L  M  N  O  P  Q  R  S  T  楼层间距离20
-location_list.append(Room(1 ,"医务室",[ 0,20,15, 5,20,25,15,20,25,30,35,40,40,50,60,60,50,50,45,50],[0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("绷带","一节绷带",get_time(),"道具"),Item("安眠药","一瓶安眠药",get_time(),"道具")])) #A
-location_list.append(Room(2 ,"淋浴房",[20, 0,20,15,10,15,20,20,20,25,30,35,35,45,55,55,45,45,40,45],[0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #B
-location_list.append(Room(3 ,"日光房",[15,20, 0, 5,15,20, 5,10,15,20,25,30,30,40,50,50,40,40,35,40],[1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #C
-location_list.append(Room(4 ,"杂物处",[ 5,15, 5, 0, 5,10, 5,10,15,20,25,30,30,40,50,50,40,40,35,40],[1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #D
-location_list.append(Room(5 ,"中庭",[20,10,15, 5, 0, 5,15, 5, 5,10,15,20,20,30,40,40,30,30,25,30],[1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #E
-location_list.append(Room(6 ,"接客室",[25,15,20,10, 5, 0,25,15, 5,10,15,20,20,30,40,40,30,30,25,30],[1,1,1,1,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #F
-location_list.append(Room(7 ,"女厕",[15,20, 5, 5,15,25, 0, 5,10,15,20,25,25,35,45,45,35,35,30,35],[1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #G
-location_list.append(Room(8 ,"会客厅",[20,20,10,10, 5, 5,10, 0, 5,10,15,20,20,30,40,40,30,30,25,30],[1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #H
-location_list.append(Room(9 ,"玄关大厅",[25,20,15,15, 5, 5,10, 5, 0, 5,10,15,15,25,35,35,25,25,20,25],[1,1,1,1,1,0,1,0,0,0,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #I
-location_list.append(Room(10,"审判庭入口过道",[30,25,20,20,10,10,15,10, 5, 0, 5,10,10,30,40,40,30,30,25,30],[1,1,1,1,1,1,1,1,0,0,0,1,0,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #J
-location_list.append(Room(11,"食堂",[35,30,25,25,15,15,20,15,10, 5, 0, 5, 5,35,45,45,35,35,30,35],[1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #K
-location_list.append(Room(12,"厨房",[40,35,30,30,20,20,25,20,15,10, 5, 0, 5,40,50,50,40,40,35,40],[1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #L
-location_list.append(Room(13,"审判庭",[40,35,30,30,20,20,25,20,15,10, 5, 5, 0,40,50,50,40,40,35,40],[1,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #M
-location_list.append(Room(14,"牢房",[50,45,40,40,30,30,35,30,25,30,35,40,40, 0,20,20,50,50,45,50],  [1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #N
-location_list.append(Room(15,"焚烧炉",[60,55,50,50,40,40,45,40,35,40,45,50,50,20, 0,30,60,60,55,60],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #O
-location_list.append(Room(16,"惩罚室",[60,55,50,50,40,40,45,40,35,40,45,50,50,20,30, 0,60,60,55,60],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #P
-location_list.append(Room(17,"娱乐室",[50,45,40,40,30,30,35,30,25,30,35,40,40,50,60,60, 0,15, 5,15],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #Q
-location_list.append(Room(18,"工作室",[50,45,40,40,30,30,35,30,25,30,35,40,40,50,60,60,15, 0, 5,15],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #R
-location_list.append(Room(19,"2F大厅",[45,40,35,35,25,25,30,25,20,25,30,35,35,45,55,55, 5, 5, 0, 5],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #S
-location_list.append(Room(20,"图书室",[50,45,40,40,30,30,35,30,25,30,35,40,40,50,60,60,15,15, 5, 0],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #T
+location_list.append(Room(0 ,"医务室",[ 0,20,15, 5,20,25,15,20,25,30,35,40,40,50,60,60,50,50,45,50],[0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("绷带","一节绷带",get_time(),"道具"),Item("安眠药","一瓶安眠药",get_time(),"道具")])) #A
+location_list.append(Room(1 ,"淋浴房",[20, 0,20,15,10,15,20,20,20,25,30,35,35,45,55,55,45,45,40,45],[0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #B
+location_list.append(Room(2 ,"日光房",[15,20, 0, 5,15,20, 5,10,15,20,25,30,30,40,50,50,40,40,35,40],[1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #C
+location_list.append(Room(3 ,"杂物处",[ 5,15, 5, 0, 5,10, 5,10,15,20,25,30,30,40,50,50,40,40,35,40],[1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #D
+location_list.append(Room(4 ,"中庭",[20,10,15, 5, 0, 5,15, 5, 5,10,15,20,20,30,40,40,30,30,25,30],[1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #E
+location_list.append(Room(5 ,"接客室",[25,15,20,10, 5, 0,25,15, 5,10,15,20,20,30,40,40,30,30,25,30],[1,1,1,1,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #F
+location_list.append(Room(6 ,"女厕",[15,20, 5, 5,15,25, 0, 5,10,15,20,25,25,35,45,45,35,35,30,35],[1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #G
+location_list.append(Room(7 ,"会客厅",[20,20,10,10, 5, 5,10, 0, 5,10,15,20,20,30,40,40,30,30,25,30],[1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #H
+location_list.append(Room(8 ,"玄关大厅",[25,20,15,15, 5, 5,10, 5, 0, 5,10,15,15,25,35,35,25,25,20,25],[1,1,1,1,1,0,1,0,0,0,1,1,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #I
+location_list.append(Room(9,"审判庭入口过道",[30,25,20,20,10,10,15,10, 5, 0, 5,10,10,30,40,40,30,30,25,30],[1,1,1,1,1,1,1,1,0,0,0,1,0,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #J
+location_list.append(Room(10,"食堂",[35,30,25,25,15,15,20,15,10, 5, 0, 5, 5,35,45,45,35,35,30,35],[1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #K
+location_list.append(Room(11,"厨房",[40,35,30,30,20,20,25,20,15,10, 5, 0, 5,40,50,50,40,40,35,40],[1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #L
+location_list.append(Room(12,"审判庭",[40,35,30,30,20,20,25,20,15,10, 5, 5, 0,40,50,50,40,40,35,40],[1,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #M
+location_list.append(Room(13,"牢房",[50,45,40,40,30,30,35,30,25,30,35,40,40, 0,20,20,50,50,45,50],  [1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #N
+location_list.append(Room(14,"焚烧炉",[60,55,50,50,40,40,45,40,35,40,45,50,50,20, 0,30,60,60,55,60],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #O
+location_list.append(Room(15,"惩罚室",[60,55,50,50,40,40,45,40,35,40,45,50,50,20,30, 0,60,60,55,60],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #P
+location_list.append(Room(16,"娱乐室",[50,45,40,40,30,30,35,30,25,30,35,40,40,50,60,60, 0,15, 5,15],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #Q
+location_list.append(Room(17,"工作室",[50,45,40,40,30,30,35,30,25,30,35,40,40,50,60,60,15, 0, 5,15],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #R
+location_list.append(Room(18,"2F大厅",[45,40,35,35,25,25,30,25,20,25,30,35,35,45,55,55, 5, 5, 0, 5],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #S
+location_list.append(Room(19,"图书室",[50,45,40,40,30,30,35,30,25,30,35,40,40,50,60,60,15,15, 5, 0],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],[Item("物品","道具类",get_time(),"道具"),Item("物品","情报类",get_time(),"情报")])) #T
 
 if __name__ == "__main__":
     main()
