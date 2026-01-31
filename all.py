@@ -6,7 +6,6 @@ import base64
 import hashlib
 import re
 from openai import OpenAI
-from typing import List, Union
 
 #大模型接入：
 class OpenAICompatibleClient:
@@ -44,7 +43,7 @@ AGENT_SYSTEM_PROMPT = """
 Thought: [这里是你的思考过程和下一步计划]
 Answer：[这里只出现“可行/不可行”]
 item：[这里是可能留下的线索，如果不可行，则输出一个空字符串。
-如果可行，则输出格式为：“名称：xxxx  描述：xxxxx  类型：（道具或情报）”]
+如果可行，则输出格式为：“名称：xxxx  描述：xxxx  类型：（道具或情报）”]
 
 #任务完成:
 当用户在3次回答中仍没有说服你接受用户的阐述，你必须在`Answer:`字段后使用`finish(answer="...")`来输出最终答案，最终答案只能从“可行”与“不可行”中选择一个
@@ -171,11 +170,13 @@ class Player:
                 seen_people.add(i)
             time.sleep(1)
         #到达地点后，获取其中物品
-
+        room_id  = -1
         for i in location_list:
             if i.name == self.location:
                 room_id = i.id
-
+        if room_id == -1:
+            send_to_player(self.id,"出错了，请重新选择行动")
+            return
         if not location_list[room_id].item:
             send_to_player(self.id,f"你在{self.location}没有发现任何物品\n")
             return
@@ -241,7 +242,7 @@ class Player:
                         continue
                     if i.name == item_choose and i.type == "物品":
                         pass
-                        choose_str += i.name + ","
+                        choose_str.append(i.name)
                     if item_choose == "结束":
                         choose_end = 1
 
@@ -564,9 +565,6 @@ def analyze_murder_plan(player, items):
                     send_to_player(player.id, "警告：未从item中解析出任何线索\n")
     return [final_feasible, clues]
 
-
-
-
 # def get_distance(player):
 #     global player_list,location_list
 #     start_address = location_list.index(player.location)
@@ -580,6 +578,7 @@ def analyze_murder_plan(player, items):
 def get_distance(player):
     global player_list,location_list,max_player_num
     distance = [0] * max_player_num
+    start_id = 0
     for i in location_list:
         if i.name == player.location:
             start_id = i.id
@@ -716,10 +715,10 @@ def activate(player,n):
 speech_finish = 0
 def end_speak(player):
     global player_list
-    send_to_player(player.id,"请等待所有玩家搜证完成")
+    send_to_player(player.id,"请等待所有玩家搜证完成\n")
     while any(item.location != "审判庭" for item in player_list):
         pass
-    send_to_player(player.id,"所有玩家已来到'审判庭',开始讨论")
+    send_to_player(player.id,"所有玩家已来到'审判庭',开始发言\n")
     end_speech = 0
     speech_finish = 0
     while end_speech < len(player_list):
@@ -727,7 +726,10 @@ def end_speak(player):
         for i in range(len(player_list)):
             while not speech_finish:
                 if  player_list[i].life == 0:
+                    broadcast("-" * 10 + f"{player.nickname}开始发言" + "-" * 10 + "\n")
                     send_to_player(i,"你已死亡，跳过发言环节\n")
+                    broadcast(f"玩家{player.nickname}已死亡，跳过发言环节\n")
+                    broadcast("-" * 10 + f"{player.nickname}发言结束" + "-" * 10 + "\n")
                     end_speech += 1
                     speech_finish = 1
                 
@@ -757,22 +759,23 @@ def end_speak(player):
                     send_to_player(i,"\n")
                     speech = get_message(i,"请输入你要提交的证据,输入其他跳过发言：\n")
                     if speech in item_list:
-                        send_to_player(player.id,f"玩家{player.nickname}提交了证据：“{speech}”\n")
+                        broadcast(f"玩家{player.nickname}提交了证据：“{speech}”\n")
                         it = player.bag[item_list.index(speech)]#取出物品对象
-                        send_to_player(player.id,f"名称：{it.name}\n描述：{it.describe}\n获取时间：{it.get_time[1]}月{it.get_time[2]}日 {it.get_time[3]}:{it.get_time[4]}\n类型：{it.type}\n")
+                        broadcast(f"名称：{it.name}\n描述：{it.describe}\n获取时间：{it.get_time[1]}月{it.get_time[2]}日 {it.get_time[3]}:{it.get_time[4]}\n类型：{it.type}\n")
                         player.bag.remove(item_list.index(speech))
                         if player.jump_speak:
-                            send_to_player(player.id,"Anan:[闭嘴]")
-                            send_to_player(player.id,"-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
+                            broadcast("Anan:[闭嘴]")
+                            broadcast("-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
                             speech_finish = 1
                             player.jump_speak = 0
                         else:
                             message = get_message(i,"请输入你的发言内容:\n")
-                            send_to_player(player.id,f"{player.nickname}：{message}\n")
-                            send_to_player(player.id,"-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
+                            broadcast("-"*10 +f"{player.nickname}开始发言"+"-"*10+"\n")
+                            broadcast(f"{player.nickname}：{message}\n")
+                            broadcast("-"*10 +f"{player.nickname}发言结束"+"-"*10+"\n")
                             speech_finish = 1
                     else:
-                        send_to_player(i,"跳过发言环节\n")
+                        broadcast("跳过发言环节\n")
                         end_speech += 1
                         speech_finish = 1
                 if i == player.id and not player.bag:
@@ -793,6 +796,7 @@ def end_speak(player):
                 speech_finish = 1
                 continue
             if i == player.id:
+                send_to_player(player.id, "-" * 10 + f"{player.nickname}总结发言开始" + "-" * 10 + "\n")
                 message = get_message(i,"请输入你的总结发言内容:\n")
                 send_to_player(player.id,f"{player_list[i].nickname}：{message}\n")
                 send_to_player(player.id,"-"*10 +f"{player.nickname}总结发言结束"+"-"*10+"\n")
@@ -838,8 +842,6 @@ def game_start(player):
         send_to_player(player.id,"游戏结束,魔女胜利,所有玩家均被杀死或魔女化")
     else:
         send_to_player(player.id,"游戏结束,魔女失败,场上不存在魔女化的玩家")
-
-
 
 def get_message(player_id,message=""):
     global player_list   
