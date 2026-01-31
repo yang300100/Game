@@ -5,6 +5,7 @@ import threading
 import base64
 import hashlib
 import re
+
 from openai import OpenAI
 
 #大模型接入：
@@ -155,20 +156,41 @@ class Player:
             time.sleep(1)
         self.location = choose
         get_distance(self)
+
+        if self.name != 'Noa' and any((room.trap == 1 and room.name == "choose") for room in location_list):
+            self.life -= 1
+            if self.life <= 0:
+                send_to_player(self.id,"你被诺亚的动物朋友杀死了\n")
+                for i in location_list:
+                    if i.name == choose:
+                        i.item.append(Item(f"{choose}的尸体", f"被杀害的尸体", [2026, 1, 6, 9, 00, 0], "情报"))
+                        self.deadtime = get_time()
+                        dead_list.append(self.id)
+                        self.dead_location = self.location
+                        self.dead_item = "陷阱"
+                        for j in range(0, len(self.distance)):
+                            if self.distance[j] <= 10 and player_list[j].id != self.id:
+                                player_list[j].bag.append(Item("奇怪的声音",
+                                                               f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到附近传来了一些奇怪的声音",
+                                                               get_time(), "情报"))
+            else:
+                send_to_player(self.id, "诺亚的动物朋友攻击了你,你损失了一点生命\n")
+
         send_to_player(self.id,f"已到达{choose}\n")
-        seen_people = set()
+        # seen_people = []
         
         send_to_player(self.id,f"正在搜寻房间中的物品...（搜寻物品时不会注意到外界情况）\n")
         for i in range(20):
             send_to_player(self.id,"\r搜索进度："+ "█" * (i + 1) * (20 // 20) + "░" * (20 - (i + 1) * (20 // 20)))
             time.sleep(1)
         send_to_player(self.id,"\n搜寻完成！\n")
+        current_time = get_time()
         for i in range(len(self.distance)):  
-            if self.distance[i] == 0 and i != self.id and i not in seen_people:
-                self.bag.append(Item(f"与{player_list[i].nickname}的相遇",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时,你与{player_list[i].nickname}在{choose}相遇了",get_time(),"情报"))
+            if self.distance[i] == 0 and i != self.id:
+                self.bag.append(Item(f"与{player_list[i].nickname}的相遇",f"在{current_time[1]}月{current_time[2]}日{current_time[3]}：{current_time[4]}分时,你与{player_list[i].nickname}在{choose}相遇了",current_time,"情报"))
                 send_to_player(self.id,f"你在{choose}遇到了{player_list[i].nickname}\n获得情报：与{player_list[i].nickname}的相遇，已添加至背包\n")
-                seen_people.add(i)
-            time.sleep(1)
+                # seen_people.add(i)
+
         #到达地点后，获取其中物品
         room_id  = -1
         for i in location_list:
@@ -267,7 +289,7 @@ class Player:
                         player_list[j].bag.append(Item("奇怪的声音",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到附近传来了一些奇怪的声音",get_time(),"情报"))
                 for j in player_list:
                     if j.nickname == choose:
-                        j.life = 0
+                        j.life -= 1
                         j.deadtime = get_time()
                         dead_list.append(j.id)
                         j.dead_location = self.location
@@ -287,7 +309,7 @@ class Player:
                     for i in location_list:
                         if i.name == self.location:
                             i.item.append(Item(f"{choose}的尸体",f"被杀害的尸体",[2026,1,6,9,00,0],"情报"))
-                    j.life = 0
+                    j.life -= 1
                     j.deadtime = get_time()
                     dead_list.append(j.id)
                     j.dead_location = self.location
@@ -309,6 +331,7 @@ class Room:
         self.distance = distance
         self.wall = wall            # 0为没有墙壁
         self.item = item
+        self.trap = 0  # 房间是否布置陷阱
 
 class Ema(Player):
     def __init__(self, player_id, conn, player_num):
@@ -328,13 +351,30 @@ class Noa(Player):
         global noa_picture_search
         noa_picture_search = 0
     def magic(self):
-        if any([item.name == "诺亚的颜料" for item in self.bag]):
+        global location_list
+        if any(item.name == "诺亚的颜料" for item in self.bag):
             if self.killer:
-                pass
+                choose = get_message(self.id,"你要使用一罐‘诺亚的颜料’将画画在这个房间里吗？输入‘确认’开始画画，输入其他退出\n")
+                if choose == '确认':
+                    send_to_player(self.id,"正在画画...请等待\n")
+                    time.sleep(5)
+                    for i in location_list:
+                        if i.name == self.location:
+                            i.trap = 1
+                    send_to_player(self.id,"绘画完成！\n")
+                else:
+                    return
             else: 
-                pass
+                choose = get_message(self.id,"你要使用一罐‘诺亚的颜料’绘制一个可以保护你一次的画吗？输入‘确认’开始画画，输入其他退出\n")
+                if choose == '确认':
+                    send_to_player(self.id,"正在画画...请等待\n")
+                    time.sleep(5)
+                    self.life += 1
+                    send_to_player(self.id,"绘画完成！\n")
+                else:
+                    return
         else:
-            send_to_player(self.id,"你没有找到颜料")
+            send_to_player(self.id,"你的颜料用完了，暂时不能画画\n")
 
 class Shiro(Player):
     def __init__(self,player_id,conn,player_num):
