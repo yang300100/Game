@@ -55,6 +55,7 @@ item：[这里是可能留下的线索，如果不可行，则输出一个空字
 class Player:
     def __init__(self,player_id,conn,player_num):
         self.conn = conn  #玩家连接socket
+        self.name = ""
         self.id = player_id   #id从0计数
         self.nickname = "no_name"
         self.life = 1
@@ -141,14 +142,14 @@ class Player:
     def move(self):
         global location_list,noa_picture_search
         choose = ""
-        while any(obj.name == choose for obj in location_list):
+        while not any(obj.name == choose for obj in location_list):
             room_str = ""
             send_to_player(self.id,f"可选地点：")
             for i in location_list:
                 room_str += i.name + " "
             send_to_player(self.id,room_str+"\n")
             choose = get_message(self.id,f"{self.nickname}要去哪里\n")
-            if any(obj.name == choose for obj in location_list):
+            if not any(obj.name == choose for obj in location_list):
                 send_to_player(self.id,"输入错误，重新输入\n")
         
         for i in range(5):
@@ -243,32 +244,32 @@ class Player:
         killer_choose = get_message(self.id,"选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索\n")
         while killer_choose not in ["徒手攻击","使用道具"]:
             killer_choose = get_message(self.id,"输入有误，重新输入\n")
-        item_name_list = []
+        # item_name_list = []
         if killer_choose == "使用道具" and self.bag:
             send_to_player(self.id,"请提交使用的道具：")
             for i in self.bag:
                 send_to_player(self.id,f"“{i.name}”")
-                item_name_list.append(i.name)
+                # item_name_list.append(i.name)
             send_to_player(self.id,"\n")
 
             choose_end = 0
             choose_str = []
             while not choose_end:
                 item_choose = ""
-                send_to_player(self.id,"当前已选择的物品：" + "".join(choose_str) + "\n")
-                while item_choose not in item_name_list:
-                    item_choose = get_message(self.id,"输入道具名称进行选择，输入“结束”结束选择\n")
+                send_str = "当前已选择的物品：" + "  ".join(choose_str) + "\n"
+                send_to_player(self.id,send_str)
+                # while item_choose not in item_name_list:
+                item_choose = get_message(self.id,"输入道具名称进行选择，输入“结束”结束选择\n")
                 for i in self.bag[:]:                               #遍历原列表副本，防止下标计数错误
                     if i.name == item_choose and i.type == "情报":
                         send_to_player(self.id,"使用失败：情报类物品不可用于攻击\n")
                         continue
                     if i.name == item_choose and i.type == "物品":
-                        pass
                         choose_str.append(i.name)
-                    if item_choose == "结束":
-                        choose_end = 1
+                if item_choose == "结束":
+                    choose_end = 1
 
-            answer,item_llm = analyze_murder_plan(self,"".join(choose_str))
+            answer,item_llm = analyze_murder_plan(self,",".join(choose_str))
 
             if answer:
                 for i in self.bag:#移除选择的物品
@@ -344,17 +345,16 @@ class Noa(Player):
     def __init__(self, player_id, conn, player_num):
         super().__init__(player_id, conn, player_num)
         self.name = "Noa"
-        random.choice(location_list).item.append(Item("诺亚的画作","诺亚不使用魔法时绘制的画作，似乎并不想让别人看到",[2026,1,6,9,0,0],"道具"))
+        random.choice(location_list).item.append(Item("诺亚的画","诺亚不使用魔法时画的画，似乎并不想让别人看到",[2026,1,6,9,0,0],"道具"))
         for i in range(4):
             random.choice(location_list).item.append(Item("诺亚的颜料","高品质的颜料，诺亚可以使用此颜料创造画作",[2026,1,6,9,0,0],"道具"))
-        # random.choice(location_list).item.append(Item("颜料","高品质的颜料，诺亚可以使用此颜料创造画作",[2026,1,6,9,0,0],"道具"))
         global noa_picture_search
         noa_picture_search = 0
     def magic(self):
         global location_list
         if any(item.name == "诺亚的颜料" for item in self.bag):
             if self.killer:
-                choose = get_message(self.id,"你要使用一罐‘诺亚的颜料’将画画在这个房间里吗？输入‘确认’开始画画，输入其他退出\n")
+                choose = get_message(self.id,"你要使用一罐‘诺亚的颜料’将画画在这个房间里吗？输入‘确认’开始作画，输入其他退出\n")
                 if choose == '确认':
                     send_to_player(self.id,"正在画画...请等待\n")
                     time.sleep(5)
@@ -662,11 +662,13 @@ def get_time():
 
 def create_player(player_id,player_name,conn,player_num):
     global player_list,p_name_list
+    send_message = "人物列表:" + "  ".join(p_name_list) + "\n"
     if USING_HTML:
-        send_to_socket(conn, "人物列表：Shiro, Meruru, Anan, Miria\n")
+        send_to_socket(conn, send_message)
         send_to_socket(conn, "请玩家选择人物：\n")
     else:
-        conn.send("人物列表：Shiro, Meruru, Anan, Miria\n".encode(ENCODING))
+
+        conn.send(send_message.encode(ENCODING))
         conn.send("请玩家选择人物：\n".encode(ENCODING))
     while True:
         print("人物遍历查询中")
@@ -688,12 +690,13 @@ def create_player(player_id,player_name,conn,player_num):
 def activate(player,n):
     global player_list,dead_search,noa_picture_search #活动函数
     if n != 0:
+        if player.life <= 0:
+            send_to_player(player.id, f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
         for i in range(n):#5次搜证机会,搜证期间不可攻击
             get_distance(player)
-            send_to_player(player.id,"-"*10 + "\n")
             if player.life <=0:
-                send_to_player(player.id,f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
                 continue
+            send_to_player(player.id,"-"*10 + "\n")
             send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n")
             send_to_player(player.id,"1.去别处看看 2.查看手机 \n3.发动魔法 ")
             choose = 0
@@ -713,29 +716,34 @@ def activate(player,n):
         player.location = "审判庭"  #搜证阶段结束后回到审判庭
         get_distance(player)
     else:
+        if player.life <= 0:
+            send_to_player(player.id, f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
         while not dead_search:
             get_distance(player)
-            send_to_player(player.id,"-"*30 + "\n")
             show_player(player)
             if player.life <=0:
-                send_to_player(player.id,f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
                 continue
+            send_to_player(player.id,"-"*30 + "\n")
             if player.name == "Noa" and noa_picture_search:
                 noa_picture_search = 0
                 player.killer = 1
                 send_to_player(player.id,"有人看到了你的画，你已成为魔女\n")
+            choose = 0
+            # if player.life > 0:
             send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n")
             send_to_player(player.id,"1.去别处看看 2.查看手机 \n3.发动魔法 ")
             if player.killer:
                 send_to_player(player.id,"4.攻击（游戏开始的前一小时不能攻击）")
-            choose = 0
             while choose not in [1,2,3,4]:
                 try:
-                    choose = int(get_message(player.id,f"\n请输入操作\n"))
+                    if player.life > 0:
+                        choose = int(get_message(player.id,f"\n请输入操作\n"))
                 except:
                     choose = 0
                     send_to_player(player.id,"输入有误，重新输入\n")
             match choose:
+                case 0:
+                    continue
                 case 1:
                     player.move()
                 case 2:
@@ -903,8 +911,10 @@ def get_message(player_id,message=""):
                 return recv_data
 
 
-def broadcast(message, exclude_conn=[]):
+def broadcast(message, exclude_conn=None):
     global player_list
+    if exclude_conn is None:
+        exclude_conn = []
     with lock:  # 加锁保证线程安全
         for i in player_list:
             if i.id not in exclude_conn:
@@ -1161,8 +1171,8 @@ player_list = []                # 全局玩家列表
 dead_list = []                  # 全局死亡玩家列表(id)
  # 投票计数列表，索引对应玩家id，值对应票数
 location_list = []  # 地点列表，用于计算对应地点之间的距离
-p_list = [Shiro, Meruru, Anan, Miria] #人物类存储列表
-p_name_list = ["Shiro", "Meruru", "Anan", "Miria"]    # 人物类名称列表
+p_list = [Shiro, Meruru, Anan, Miria,Noa] #人物类存储列表
+p_name_list = ["Shiro", "Meruru", "Anan", "Miria","Noa"]    # 人物类名称列表
 time_start = [2026,1,6,9,00,0]  # 游戏的起始游戏时间
 time_real_start = time.time()   # 获取真实时间戳，用于计算时间流逝
 API_KEY = "ollama"
