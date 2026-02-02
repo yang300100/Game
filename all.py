@@ -224,41 +224,60 @@ class Player:
         if self.killer == 0 or int(time.time()-time_real_start) < 60:  # 开局前一小时以及普通人不能攻击
             send_to_player(self.id,"不可攻击其他玩家，跳过本回合\n")
             return
-        killer_list_id = []
+
         get_distance(self)
-        killer_list_nickname = []
+        killer_list_nickname_far = []
+        killer_list_nickname_near = []
         for i in range(0, len(self.distance)):
-            if self.distance[i] <= 1 and player_list[i].life == 1 and player_list[i].id != self.id:
-                killer_list_id.append(i)
-                killer_list_nickname.append(player_list[i].nickname)
-        send_to_player(self.id,"可选目标为：")
-        for i in killer_list_nickname:
-            send_to_player(self.id,f"“{i}” ")
-        send_to_player(self.id,"\n")
-        if not killer_list_nickname:
+            if self.distance[i] <= 1 and player_list[i].life >= 1 and player_list[i].id != self.id:
+                killer_list_nickname_far.append(player_list[i].nickname)
+
+        start_room = 0
+        end_room = 0
+        for i in location_list:
+            if self.location == i.name:
+                start_room = i.id
+        for i in range(0, len(player_list)):
+            for j in location_list:
+                if player_list[i].location == j.name:
+                    end_room = j.id
+            if location_list[start_room].wall[end_room] == 0 and player_list[i].life >= 1 and player_list[i].id != self.id:
+                killer_list_nickname_near.append(player_list[i].nickname)
+
+
+        send_to_player(self.id,"可选目标为：\n")
+        send_str = "近距离目标：" + "  ".join(killer_list_nickname_near) + "\n"
+        send_to_player(self.id,send_str)
+        send_str = "远距离目标：" + "  ".join(killer_list_nickname_far) + "\n"
+        send_to_player(self.id, send_str)
+
+        if not (killer_list_nickname_near or killer_list_nickname_far):
             send_to_player(self.id,"攻击失败：附近无目标\n")
             return
+
+
         choose = ""
-        while choose not in killer_list_nickname:
+        while choose not in (killer_list_nickname_near or killer_list_nickname_far):
             choose = get_message(self.id,f"{self.nickname}要选择谁？\n")
-        killer_choose = get_message(self.id,"选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索\n")
+
+        if choose in killer_list_nickname_near:
+            killer_choose = get_message(self.id,"选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索\n")
+        else:
+            killer_choose = "使用道具"
+
         while killer_choose not in ["徒手攻击","使用道具"]:
             killer_choose = get_message(self.id,"输入有误，重新输入\n")
-        # item_name_list = []
         if killer_choose == "使用道具" and self.bag:
             send_to_player(self.id,"请提交使用的道具：")
             for i in self.bag:
                 send_to_player(self.id,f"“{i.name}”")
-                # item_name_list.append(i.name)
             send_to_player(self.id,"\n")
 
             choose_end = 0
             choose_str = []
             while not choose_end:
-                item_choose = ""
                 send_str = "当前已选择的物品：" + "  ".join(choose_str) + "\n"
                 send_to_player(self.id,send_str)
-                # while item_choose not in item_name_list:
                 item_choose = get_message(self.id,"输入道具名称进行选择，输入“结束”结束选择\n")
                 for i in self.bag[:]:                               #遍历原列表副本，防止下标计数错误
                     if i.name == item_choose and i.type == "情报":
@@ -269,7 +288,10 @@ class Player:
                 if item_choose == "结束":
                     choose_end = 1
 
-            answer,item_llm = analyze_murder_plan(self,",".join(choose_str))
+            if choose in killer_list_nickname_far and choose not in killer_list_nickname_near:
+                answer,item_llm = analyze_murder_plan(self,",".join(choose_str),"far")
+            else:
+                answer, item_llm = analyze_murder_plan(self, ",".join(choose_str),"near")
 
             if answer:
                 for i in self.bag:#移除选择的物品
@@ -304,7 +326,7 @@ class Player:
             send_to_player(self.id,"使用徒手攻击\n")
             for j in range(0,len(self.distance)):
                 if self.distance[j] <= 55 and player_list[j].id != self.id:
-                    player_list[j].bag.append(Item("奇怪的声音",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到哪里传来了一些奇怪的声音",get_time(),"情报"))
+                    player_list[j].bag.append(Item("奇怪的声音",f"在{get_time()[1]}月{get_time()[2]}日{get_time()[3]}：{get_time()[4]}分时，你听到附近传来了一些奇怪的声音",get_time(),"情报"))
             for j in player_list:
                 if j.nickname == choose:
                     for i in location_list:
@@ -508,7 +530,7 @@ class Miria(Player):
 
 
 #攻击可行性
-def analyze_murder_plan(player, items):
+def analyze_murder_plan(player, items,distance):
     global API_KEY, BASE_URL, MODEL_ID
     """
     分析谋杀计划可行性，支持多物品解析
@@ -534,6 +556,8 @@ def analyze_murder_plan(player, items):
     for i in range(3):
         send_to_player(player.id, f"-----第{i + 1}次阐述-----\n")
         user_input = get_message(player.id, "请阐述你要如何使用你提交的道具：\n")
+        if distance == "far":
+            user_input += ",以达到远程攻击的目的"
         prompt_history.append(f"用户阐述{i + 1}: {user_input}")
         full_prompt = "\n".join(prompt_history)
         llm_output = llm.generate(full_prompt, system_prompt=AGENT_SYSTEM_PROMPT)
