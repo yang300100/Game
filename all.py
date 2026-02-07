@@ -5,7 +5,6 @@ import threading
 import base64
 import hashlib
 import re
-
 from openai import OpenAI
 
 #大模型接入：
@@ -74,11 +73,13 @@ class Player:
         self.last_attack_time = 0   #魔女杀人冷却
 
     def check_phone(self):
-        global player_list
+        global player_list,USING_HTML
         send_to_player(self.id,f"时间：{get_time()[0]}年{get_time()[1]}月{int(get_time()[2])}日 {get_time()[3]}:{get_time()[4]}\n")
         send_to_player(self.id,"背包：\n")
+        bag_str = ""
         for i in self.bag:
             send_to_player(self.id,f"“{i.name}” ")
+            bag_str += "$"+f"{i.name}"
         send_to_player(self.id,"\n")
         #新消息检测
         obj_send = 0
@@ -96,17 +97,27 @@ class Player:
         #消息发送部分
         nickname_list = []
         send_to_player(self.id,"可聊天对象：\n")
-        name_str = ""
         for i in player_list:
-            if i.id == self.id:
-                continue
-            name_str += i.nickname + " "
             nickname_list.append(i.nickname)
         nickname_list.append("公共群聊")
-        send_to_player(self.id,name_str+"公共群聊\n")  
-        choose = get_message(self.id,"输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机\n")
+        chat_str = "$".join(nickname_list)
+
+        choose= ""
         item_list = [i.name for i in self.bag]
         while choose != "退出":
+            if USING_HTML:
+                send_to_player(self.id, " ".join(nickname_list) + "公共群聊\n")
+                choose = get_message(self.id, "输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机\n")
+            else:
+                cho = get_message(self.id, "button:$查看背包$聊天$退出")
+                if cho == "查看证据":
+                    bag_str = "button:$" + bag_str
+                    choose = get_message(self.id, bag_str)
+                elif cho == "聊天":
+                    chat_str = "list:$" + chat_str
+                    choose = get_message(self.id, chat_str)
+                else:
+                    choose = "退出"
             if choose in item_list:
                 for i in self.bag:
                     if i.name == choose:
@@ -137,18 +148,22 @@ class Player:
                         player_list[obj_id].message_len[self.id] += 1   #修改对方消息变化量
                         send_to_player(self.id,inp+f":{self.nickname}\n")
                         inp = get_message(self.id)
-            choose = get_message(self.id,"输入玩家昵称开启聊天，输入物品名称查看物品详情，输入“退出”退出手机\n")
     
     def move(self):
-        global location_list,noa_picture_search
+        global location_list,noa_picture_search,USING_HTML
         choose = ""
         while not any(obj.name == choose for obj in location_list):
             room_str = ""
-            send_to_player(self.id,f"可选地点：")
             for i in location_list:
-                room_str += i.name + " "
-            send_to_player(self.id,room_str+"\n")
-            choose = get_message(self.id,f"{self.nickname}要去哪里\n")
+                room_str += i.name + "$"
+
+            if USING_HTML:
+                send_to_player(self.id,"可选地点："+room_str+"\n")
+                choose = get_message(self.id, f"{self.nickname}要去哪里\n")
+            else:
+                send_to_player(self.id, "可选地点：")
+                choose = get_message(self.id,"list:"+room_str+"\n")
+
             if not any(obj.name == choose for obj in location_list):
                 send_to_player(self.id,"输入错误，重新输入\n")
         
@@ -217,7 +232,7 @@ class Player:
             send_to_player(self.id,f"你在{self.location}发现了情报：“{random_item.name}”已添加至背包\n")
     
     def attack(self):
-        global time_start, player_list, time_real_start ,dead_list,location_list
+        global time_start, player_list, time_real_start ,dead_list,location_list,USING_HTML
         if (time.time() - self.last_attack_time) / 60 <= 3:
             send_to_player(self.id,"三分钟内不可再次杀人")
             return
@@ -229,7 +244,7 @@ class Player:
         killer_list_nickname_far = []
         killer_list_nickname_near = []
         for i in range(0, len(self.distance)):
-            if self.distance[i] <= 1 and player_list[i].life >= 1 and player_list[i].id != self.id:
+            if self.distance[i] <= 1 <= player_list[i].life and player_list[i].id != self.id:
                 killer_list_nickname_far.append(player_list[i].nickname)
 
         start_room = 0
@@ -251,34 +266,52 @@ class Player:
         send_str = "远距离目标：" + "  ".join(killer_list_nickname_far) + "\n"
         send_to_player(self.id, send_str)
 
+
         if not (killer_list_nickname_near or killer_list_nickname_far):
-            send_to_player(self.id,"攻击失败：附近无目标\n")
+            send_to_player(self.id,"攻击失败：没有找到可以攻击的目标\n")
             return
 
 
         choose = ""
-        while choose not in (killer_list_nickname_near or killer_list_nickname_far):
-            choose = get_message(self.id,f"{self.nickname}要选择谁？\n")
-
-        if choose in killer_list_nickname_near:
-            killer_choose = get_message(self.id,"选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索\n")
+        if USING_HTML:
+            while choose not in (killer_list_nickname_near or killer_list_nickname_far):
+                choose = get_message(self.id,f"{self.nickname}要选择谁？\n")
         else:
-            killer_choose = "使用道具"
+            send_to_player(self.id,"选择你的目标")
+            kill_lst = set(killer_list_nickname_near+killer_list_nickname_far)
+            kill_str = "list:"+"$".join(kill_lst)
+            choose = get_message(self.id,kill_str)
 
+        killer_choose = ""
         while killer_choose not in ["徒手攻击","使用道具"]:
-            killer_choose = get_message(self.id,"输入有误，重新输入\n")
+            if choose in killer_list_nickname_near:
+                if USING_HTML:
+                    killer_choose = get_message(self.id,"选择杀人方式：徒手攻击/使用道具\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索\n")
+                else:
+                    send_to_player(self.id,"选择杀人方式：\n注：徒手攻击会造成较大的声音，并可能散落更多线索；使用道具则相对安静，但会留下有关使用道具的特殊线索\n")
+                    killer_choose = get_message(self.id, "button:$徒手攻击$使用道具")
+            else:
+                killer_choose = "使用道具"
+
         if killer_choose == "使用道具" and self.bag:
             send_to_player(self.id,"请提交使用的道具：")
+            item_str = ""
             for i in self.bag:
                 send_to_player(self.id,f"“{i.name}”")
+                item_str += "$"+f"{i.name}"
             send_to_player(self.id,"\n")
 
+            item_str += "$结束"
             choose_end = 0
             choose_str = []
             while not choose_end:
                 send_str = "当前已选择的物品：" + "  ".join(choose_str) + "\n"
                 send_to_player(self.id,send_str)
-                item_choose = get_message(self.id,"输入道具名称进行选择，输入“结束”结束选择\n")
+                if USING_HTML:
+                    item_choose = get_message(self.id,"输入道具名称进行选择，输入“结束”结束选择\n")
+                else:
+                    item_str = "list:" + item_str
+                    item_choose = get_message(self.id,item_str)
                 for i in self.bag[:]:                               #遍历原列表副本，防止下标计数错误
                     if i.name == item_choose and i.type == "情报":
                         send_to_player(self.id,"使用失败：情报类物品不可用于攻击\n")
@@ -362,6 +395,8 @@ class Ema(Player):
         self.name = "Ema"
     def magic(self):
         pass
+    # TODO:完成魔女杀手魔法
+
 
 class Noa(Player):
     def __init__(self, player_id, conn, player_num):
@@ -373,10 +408,14 @@ class Noa(Player):
         global noa_picture_search
         noa_picture_search = 0
     def magic(self):
-        global location_list
+        global location_list,USING_HTML
         if any(item.name == "诺亚的颜料" for item in self.bag):
             if self.killer:
-                choose = get_message(self.id,"你要使用一罐‘诺亚的颜料’将画画在这个房间里吗？输入‘确认’开始作画，输入其他退出\n")
+                if USING_HTML:
+                    choose = get_message(self.id,"你要使用一罐‘诺亚的颜料’将画画在这个房间里吗？输入‘确认’开始作画，输入其他退出\n")
+                else:
+                    send_to_player(self.id,"你要使用一罐‘诺亚的颜料’将画画在这个房间里吗？\n")
+                    choose = get_message(self.id,"button:$确认$退出")
                 if choose == '确认':
                     send_to_player(self.id,"正在画画...请等待\n")
                     time.sleep(5)
@@ -386,8 +425,12 @@ class Noa(Player):
                     send_to_player(self.id,"绘画完成！\n")
                 else:
                     return
-            else: 
-                choose = get_message(self.id,"你要使用一罐‘诺亚的颜料’绘制一个可以保护你一次的画吗？输入‘确认’开始画画，输入其他退出\n")
+            else:
+                if USING_HTML:
+                    choose = get_message(self.id,"你要使用一罐‘诺亚的颜料’绘制一幅可以保护你一次的画吗？输入‘确认’开始画画，输入其他退出\n")
+                else:
+                    send_to_player(self.id, "你要使用一罐‘诺亚的颜料’绘制一幅可以保护你一次的画吗？\n")
+                    choose = get_message(self.id, "button:$确认$退出")
                 if choose == '确认':
                     send_to_player(self.id,"正在画画...请等待\n")
                     time.sleep(5)
@@ -398,62 +441,37 @@ class Noa(Player):
         else:
             send_to_player(self.id,"你的颜料用完了，暂时不能画画\n")
 
+
 class Shiro(Player):
     def __init__(self,player_id,conn,player_num):
         super().__init__(player_id,conn,player_num)
         self.name = "Shiro"
     def magic(self):
-        choose = 0
-        while choose not in [1,2]:
-            try:
-                send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/1次\n")
-                send_to_player(self.id,"使用魔法：伪证  请选择: \n")
-                choose = int(get_message(self.id,"1.将一项证据显示为伪证  2.创造一个伪证\n"))
-            except:
-                choose = 0
-                send_to_player(self.id,"输入有误，重新输入\n")
-        if choose == 1:
-            if not self.bag:
-                self.magic_used = 1
-                send_to_player(self.id,"魔法使用失败：背包中无物品\n")
-            else:
-                j=0
-                for i in self.bag:
-                    j+=1
-                    send_to_player(self.id,f"{j}."+i.name)
-                choose = 0
-                while choose not in range(1,len(self.bag)+1):
-                    try:
-                        choose = int(get_message(self.id,"选择要显示为伪证的物品\n"))
-                    except:
-                        choose = 0
-                        send_to_player(self.id,"输入有误，重新输入\n")
-                self.bag[choose-1].name = "伪证：" + self.bag[choose-1].name
-                send_to_player(self.id,"你选择的证据已添加“伪证“标签\n")
-                self.magic_used = 0
-        else:
-            send_to_player(self.id,"输入伪造物品的名字，描述以及获得时间\n")
-            name = get_message(self.id,"为伪证命名\n")
-            describe = get_message(self.id,"为伪证填写描述\n")
-            time_false = []
-            while len(time_false) != 12:
-                time_false = get_message(self.id,"填写伪证的获取时间，格式为：202509010101（2025年9月1日1时1分）\n")
-                if len(time_false) != 12:
-                    send_to_player(self.id,"时间输入长度有误，重新输入\n")
-                elif not time_false.isdigit():
-                    send_to_player(self.id,"时间输入格式有误，重新输入\n")
-            time_li = [str(time_false[:4]),str(time_false[4:6]),str(time_false[6:8]),str(time_false[8:10]),str(time_false[10:])]
-            false_item = Item("伪证："+name,describe,time_li,"情报")
-            self.bag.append(false_item)
-            send_to_player(self.id,"伪造完成，伪证已添加至背包\n")
-            self.magic_used = 0
+        global USING_HTML
+        send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/1次\n")
+        send_to_player(self.id,"使用魔法：伪证\n")
+        send_to_player(self.id,"输入伪造物品的名字，描述以及获得时间\n")
+        name = get_message(self.id,"为伪证命名\n")
+        describe = get_message(self.id,"为伪证填写描述\n")
+        time_false = []
+        while len(time_false) != 12:
+            time_false = get_message(self.id,"填写伪证的获取时间，格式为：202509010101（2025年9月1日1时1分）\n")
+            if len(time_false) != 12:
+                send_to_player(self.id,"时间输入长度有误，重新输入\n")
+            elif not time_false.isdigit():
+                send_to_player(self.id,"时间输入格式有误，重新输入\n")
+        time_li = [str(time_false[:4]),str(time_false[4:6]),str(time_false[6:8]),str(time_false[8:10]),str(time_false[10:])]
+        false_item = Item(name,describe,time_li,"情报")
+        self.bag.append(false_item)
+        send_to_player(self.id,"伪造完成，伪证已添加至背包\n")
+        self.magic_used -= 1
 
 class Meruru(Player):
     def __init__(self,player_id,conn,player_num):
         super().__init__(player_id,conn,player_num)
         self.name = "Meruru"
     def magic(self):
-        global player_list
+        global player_list,USING_HTML
         send_to_player(self.id,"使用魔法:验尸\n")
         send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/1次\n")
         if dead_list:
@@ -467,9 +485,13 @@ class Meruru(Player):
                         send_to_player(self.id,"验尸中...\n")
                         time.sleep(5)
                         send_to_player(self.id,f"验尸完成！{player_list[i].nickname}的死亡时间为：{player_list[i].deadtime[1]}月{player_list[i].deadtime[2]}日{player_list[i].deadtime[3]}时{player_list[i].deadtime[4]}分,死于{player_list[i].dead_item}攻击\n")
-                        choose = get_message(self.id,f"是否要伪造验尸报告？（是/否）\n")
+                        choose = ""
                         while choose not in ["是","否"]:
-                            choose = get_message(self.id,"输入有误，重新输入\n")
+                            if USING_HTML:
+                                choose = get_message(self.id, "是否要伪造验尸报告？（是/否）\n")
+                            else:
+                                send_to_player(self.id,"是否要伪造验尸报告？\n")
+                                choose = get_message(self.id, "button:$是$否")
                         if choose == "是":
                             time_false = []
                             while len(time_false) != 12:
@@ -505,17 +527,24 @@ class Miria(Player):
         self.name = "Miria"
         self.magic_used = 2
     def magic(self):
-        global player_list
+        global player_list,USING_HTML
         send_to_player(self.id,"使用魔法:互换\n")
         send_to_player(self.id,"选择一名玩家，与其互换背包与位置\n")
         send_to_player(self.id,f"魔法剩余使用次数{self.magic_used}/2次\n")
-        send_to_player(self.id,"可选玩家列表\n")
-        choose_str = ""
+
+        choose_list = []
         for i in player_list:
             if i.life:
-                choose_str += i.nickname + " "
-        send_to_player(self.id,choose_str + "\n")
-        aim = get_message(self.id,"你要与谁互换位置和背包\n")
+                choose_list.append(i.nickname)
+        if USING_HTML:
+            send_str = "可选玩家列表\n" + " ".join(choose_list) + "\n"
+            send_to_player(self.id,send_str)
+            aim = get_message(self.id,"你要与谁互换位置和背包\n")
+        else:
+            send_to_player(self.id,"选择玩家:")
+            choose_str = "list:"+"$".join(choose_list)
+            aim = get_message(self.id,choose_str)
+
         for i in player_list:
             if aim == i.nickname and i.life:
                 self.bag, i.bag = i.bag, self.bag
@@ -597,7 +626,11 @@ def analyze_murder_plan(player, items,distance):
             if thought_match:
                 thought_content = thought_match.group(1).strip()
                 send_to_player(player.id, f"模型推理：\n{thought_content}\n")
-            user_confirm = get_message(player.id, "模型认为方案可行，你是否认同模型的推理？(是/否)：").strip().lower()
+            if USING_HTML:
+                user_confirm = get_message(player.id, "模型认为方案可行，你是否认同模型的推理？(是/否)：").strip().lower()
+            else:
+                send_to_player(player.id,"模型认为方案可行，你是否认同模型的推理？")
+                user_confirm = get_message(player.id,"button:$是$否")
             if user_confirm in ['是', 'y', 'yes', '认同', '确认', '对', '正确']:
                 print("用户认同模型判断，阐述结束\n")
                 break
@@ -628,16 +661,6 @@ def analyze_murder_plan(player, items,distance):
                 if not clues:
                     send_to_player(player.id, "警告：未从item中解析出任何线索\n")
     return [final_feasible, clues]
-
-# def get_distance(player):
-#     global player_list,location_list
-#     start_address = location_list.index(player.location)
-#     distance = []
-#     for i in player_list:
-#         end_address = location_list.index(i.location)
-#         distance.append(map_len[start_address][end_address])
-#     player.distance = distance
-#     return distance
 
 def get_distance(player):
     global player_list,location_list,max_player_num
@@ -712,7 +735,7 @@ def create_player(player_id,player_name,conn,player_num):
         conn.send("人物创建完成\n".encode(ENCODING))
 
 def activate(player,n):
-    global player_list,dead_search,noa_picture_search #活动函数
+    global player_list,dead_search,noa_picture_search,USING_HTML #活动函数
     if n != 0:
         if player.life <= 0:
             send_to_player(player.id, f"玩家{player.nickname}已经死亡，请等待游戏结束\n")
@@ -722,20 +745,18 @@ def activate(player,n):
                 continue
             send_to_player(player.id,"-"*10 + "\n")
             send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n")
-            send_to_player(player.id,"1.去别处看看 2.查看手机 \n3.发动魔法 ")
-            choose = 0
-            while choose not in [1,2,3]:
-                try:
-                    choose = int(get_message(player.id,f"\n请输入操作\n"))
-                except:
-                    choose = 0
-                    send_to_player(player.id,"输入有误，重新输入\n")
+            choose = ""
+            while choose not in ["去别处看看","查看手机","发动魔法"]:
+                if not USING_HTML:
+                    choose = get_message(player.id, "button:$去别处看看$查看手机$发动魔法")
+                else:
+                    choose = get_message(player.id, "去别处看看   查看手机    发动魔法\n")
             match choose:
-                case 1:
+                case "去别处看看":
                     player.move()
-                case 2:
+                case "查看手机":
                     player.check_phone()
-                case 3:
+                case "发动魔法":
                     player.magic()
         player.location = "审判庭"  #搜证阶段结束后回到审判庭
         get_distance(player)
@@ -752,29 +773,30 @@ def activate(player,n):
                 noa_picture_search = 0
                 player.killer = 1
                 send_to_player(player.id,"有人看到了你的画，你已成为魔女\n")
-            choose = 0
-            # if player.life > 0:
             send_to_player(player.id,f"{player.nickname}当前位置：{player.location}\n")
-            send_to_player(player.id,"1.去别处看看 2.查看手机 \n3.发动魔法 ")
-            if player.killer:
-                send_to_player(player.id,"4.攻击（游戏开始的前一小时不能攻击）")
-            while choose not in [1,2,3,4]:
-                try:
-                    if player.life > 0:
-                        choose = int(get_message(player.id,f"\n请输入操作\n"))
-                except:
-                    choose = 0
-                    send_to_player(player.id,"输入有误，重新输入\n")
+
+            choose = ""
+            while choose not in ["去别处看看","查看手机","发动魔法","攻击"]:
+                if not USING_HTML:
+                    if player.killer:
+                        choose = get_message(player.id, "button:$去别处看看$查看手机$发动魔法$攻击")
+                    else:
+                        choose = get_message(player.id, "button:$去别处看看$查看手机$发动魔法")
+                else:
+                    if player.killer:
+                        choose = get_message(player.id, "去别处看看    查看手机    发动魔法    攻击\n")
+                    else:
+                        choose = get_message(player.id, "去别处看看   查看手机    发动魔法\n")
             match choose:
                 case 0:
                     continue
-                case 1:
+                case "去别处看看":
                     player.move()
-                case 2:
+                case "查看手机":
                     player.check_phone()
-                case 3:
+                case "发动魔法":
                     player.magic()
-                case 4:
+                case "攻击":
                     player.attack()
             get_distance(player)
             for i in player.distance:
@@ -784,9 +806,10 @@ def activate(player,n):
                     send_to_player(player.id,f"玩家{player.nickname}在{player.location}发现了一具尸体，进入搜证阶段\n")
                     break
 
+
 speech_finish = 0
 def end_speak(player):
-    global player_list
+    global player_list,USING_HTML
     send_to_player(player.id,"请等待所有玩家搜证完成\n")
     while any(item.location != "审判庭" for item in player_list):
         pass
@@ -806,16 +829,19 @@ def end_speak(player):
                     speech_finish = 1
                 
                 if i == player.id and player_list[i].name == "Anan" and player_list[i].magic_used > 0:
-                    send_to_player(player.id,"你可以发动魔法，输入一名玩家的昵称，使得此玩家出示证据后跳过发言一次\n")
-                    send_to_player(player.id,"可选玩家：")
-                    name_str = ""
+                    send_to_player(player.id,"你可以发动魔法，选择一名玩家，使得此玩家出示证据后跳过发言一次\n")
+
                     choose_list = []
                     for j in player_list:
                         if j.id != player.id and j.life == 1:
-                            name_str += j.nickname + " "
                             choose_list.append(j)
-                    send_to_player(player.id,name_str+"\n")
-                    choose = get_message(player.id,"请输入玩家昵称,输入空即为放弃使用魔法\n")
+                    if USING_HTML:
+                        send_to_player(player.id, "可选玩家：")
+                        send_to_player(player.id," ".join(choose_list))
+                        choose = get_message(player.id,"\n请输入玩家昵称,输入空即为放弃使用魔法\n")
+                    else:
+                        name_str = "list:"+"$".join(choose_list)+"$无"
+                        choose = get_message(player.id,name_str)
                     for k in choose_list:
                         if k.nickname == choose:
                             k.jump_speak = 1
@@ -826,10 +852,13 @@ def end_speak(player):
                     item_list = []
                     send_to_player(i,"请玩家选择你要提交的证据，随后发言：\n")
                     for j in player.bag:
-                        send_to_player(i,f"“{j.name}” ")
                         item_list.append(j.name)
-                    send_to_player(i,"\n")
-                    speech = get_message(i,"请输入你要提交的证据,输入其他跳过发言：\n")
+                    if USING_HTML:
+                        send_to_player(i," ".join(item_list))
+                        speech = get_message(i,"\n请输入你要提交的证据,输入其他跳过发言：\n")
+                    else:
+                        name_str = "list:"+"$".join(item_list)+"$跳过"
+                        speech = get_message(i, name_str)
                     if speech in item_list:
                         broadcast(f"玩家{player.nickname}提交了证据：“{speech}”\n")
                         it = player.bag[item_list.index(speech)]#取出物品对象
@@ -868,10 +897,10 @@ def end_speak(player):
                 speech_finish = 1
                 continue
             if i == player.id:
-                send_to_player(player.id, "-" * 10 + f"{player.nickname}总结发言开始" + "-" * 10 + "\n")
+                broadcast("-" * 10 + f"{player.nickname}总结发言开始" + "-" * 10 + "\n")
                 message = get_message(i,"请输入你的总结发言内容:\n")
-                send_to_player(player.id,f"{player_list[i].nickname}：{message}\n")
-                send_to_player(player.id,"-"*10 +f"{player.nickname}总结发言结束"+"-"*10+"\n")
+                broadcast(f"{player_list[i].nickname}：{message}\n")
+                broadcast("-"*10 +f"{player.nickname}总结发言结束"+"-"*10+"\n")
                 speech_finish = 1
             elif i != player.id and not player.send_message:
                 player.send_message = 1
@@ -879,8 +908,33 @@ def end_speak(player):
         speech_finish = 0
         player.send_message = 0
 
+def get_ticket(player):
+    global player_list,USING_HTML,max_player_num
+    list_str = ""
+    ticket_list = []
+    for i in player_list:
+        ticket_list.append(i.nickname)
+    answer = ""
+    while answer not in ticket_list:
+        if USING_HTML:
+            send_to_player(player.id, "玩家列表：" + " ".join(ticket_list))
+            answer = get_message(player.id, "请玩家进行投票，输入你要投票的玩家昵称\n")
+        else:
+            list_str = "list:" + "$".join(ticket_list)
+            send_to_player(player.id, "选择你认为是魔女的玩家")
+            answer = get_message(player.id, list_str)
+    ticket = [0]* max_player_num
+
+    ticket[[i.nickname for i in player_list].index(answer)] += 1
+    send_to_player(player.id, f"你投票给了玩家{answer}\n")
+    while sum(ticket) < max_player_num:
+        send_to_player(player.id, "请等待其他玩家投票\n")
+    max_vote = max(ticket)
+    player_list[ticket.index(max_vote)].life = 0
+    send_to_player(player.id, f"玩家{player_list[ticket.index(max_vote)].nickname}被处刑")
+
 def game_start(player):
-    global ticket,player_list
+    global ticket,player_list,USING_HTML
     print("-"*11,"游戏开始","-"*11,"\n")
     # 第一阶段-自由活动直到尸体被发现
     while any(item.killer == 1 and item.life > 0 for item in player_list) or any(item.killer == 0 and item.life > 0 for item in player_list):
@@ -894,29 +948,14 @@ def game_start(player):
         end_speak(player)
         send_to_player(player.id,"发言阶段结束，进入投票阶段\n")
         #第四阶段-投票阶段
-        send_to_player(player.id,"请玩家进行投票，输入你要投票的玩家昵称\n")
-        answer = get_message(player.id,"投票开始，输入你要投票的玩家昵称：")
-        list_str = ""
-        for i in player_list:
-            list_str += i.nickname +" "
-        send_to_player(player.id,f"{list_str}\n")
-        while answer not in [i.nickname for i in player_list]:
-            get_message(player.id,"输入有误，重新输入\n")
-        ticket[[i.nickname for i in player_list].index(answer)] += 1
-        send_to_player(player.id,f"你投票给了玩家{answer}\n")
-        while sum(ticket) < len(player_list):
-            send_to_player(player.id,"请等待其他玩家投票\n")
-        max_vote = max(ticket)
-        player_list[ticket.index(max_vote)].life = 0
-        send_to_player(player.id,f"玩家{player_list[ticket.index(max_vote)].nickname}被处刑")
-    
+        get_ticket(player)
     if any(item.killer == 1 and item.life > 0 for item in player_list):
         send_to_player(player.id,"游戏结束,魔女胜利,所有玩家均被杀死或魔女化")
     else:
         send_to_player(player.id,"游戏结束,魔女失败,场上不存在魔女化的玩家")
 
 def get_message(player_id,message=""):
-    global player_list   
+    global player_list,USING_HTML
     player = player_list[player_id]
     if USING_HTML:
         if message:
@@ -1193,10 +1232,9 @@ max_player_num = 0              # 设置最大游玩人数，达到最大游玩�
 dead_search = 0                 # 死者是否被发现，0-未被发现，1-已被发现
 player_list = []                # 全局玩家列表
 dead_list = []                  # 全局死亡玩家列表(id)
- # 投票计数列表，索引对应玩家id，值对应票数
 location_list = []  # 地点列表，用于计算对应地点之间的距离
-p_list = [Shiro, Meruru, Anan, Miria,Noa] #人物类存储列表
-p_name_list = ["Shiro", "Meruru", "Anan", "Miria","Noa"]    # 人物类名称列表
+p_list = [Shiro, Meruru, Anan, Miria, Noa] #人物类存储列表
+p_name_list = ["Shiro", "Meruru", "Anan", "Miria", "Noa"]    # 人物类名称列表
 time_start = [2026,1,6,9,00,0]  # 游戏的起始游戏时间
 time_real_start = time.time()   # 获取真实时间戳，用于计算时间流逝
 API_KEY = "ollama"
