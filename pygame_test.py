@@ -416,22 +416,23 @@ class ButtonMessage:
 
 
 class MessageLine:
-    """单行消息，可能包含文字和多个按钮"""
+    """单行消息，可能包含文字和多个按钮 - 支持多行文本"""
 
-    def __init__(self, content, color=COLOR_MSG_DEFAULT, font=None):
+    def __init__(self, content, color=COLOR_MSG_DEFAULT, font=None, max_width=None):
         self.font = font or FONT_MAIN()
         self.color = color
         self.buttons = []  # 按钮列表
         self.dropdown = None  # 下拉列表
         self.submit_button = None  # 提交按钮
-        self.text_parts = []  # 文字部分
+        self.text_lines = []  # 多行文本
         self.height = self.font.get_height() + 4
+        self.max_width = max_width  # 最大宽度（用于自动换行）
 
         # 解析内容
         self._parse_content(content)
 
     def _parse_content(self, content):
-        """解析内容，提取按钮和普通文字 - 修复版"""
+        """解析内容，提取按钮和普通文字 - 支持多行文本"""
         if isinstance(content, str):
             content = content.strip()  # 去除首尾空白
             if content.startswith("button:"):
@@ -460,9 +461,39 @@ class MessageLine:
                     btn_height = self.submit_button.height + 10
                     self.height = max(self.height, list_height + btn_height + 10)
             else:
-                self.text_parts = [content]
+                # 普通文本，处理自动换行
+                if self.max_width and self.max_width > 0:
+                    self.text_lines = self._wrap_text(content, self.max_width)
+                    self.height = len(self.text_lines) * (self.font.get_height() + 4)
+                else:
+                    self.text_lines = [content]
         else:
-            self.text_parts = [content]
+            self.text_lines = [str(content)]
+
+    def _wrap_text(self, text, max_width):
+        """将文本自动换行到指定宽度"""
+        lines = []
+        words = text.split()
+        current_line = []
+
+        for word in words:
+            # 测试添加单词后是否会超出宽度
+            test_line = ' '.join(current_line + [word])
+            test_width = self.font.size(test_line)[0]
+
+            if test_width > max_width and current_line:
+                # 当前行已满，添加当前行
+                lines.append(' '.join(current_line))
+                current_line = [word]  # 开始新行
+            else:
+                # 继续添加单词到当前行
+                current_line.append(word)
+
+        # 添加最后一行
+        if current_line:
+            lines.append(' '.join(current_line))
+
+        return lines
 
     def set_button_callback(self, callback):
         """为所有按钮设置回调"""
@@ -476,6 +507,17 @@ class MessageLine:
         """绘制这一行内容"""
         current_x = x
         current_y = y
+
+        # 首先绘制文本行（可能有多行）
+        for text_line in self.text_lines:
+            text_surf = self.font.render(text_line, True, self.color)
+            surface.blit(text_surf, (current_x, current_y))
+            current_y += self.font.get_height() + 4
+
+        # 调整current_y位置，确保按钮在文本下方
+        if self.text_lines:
+            current_y -= self.font.get_height() + 4  # 回到最后一行文本的位置
+            current_y += 5  # 添加一些间距
 
         if self.buttons:
             # 绘制多个按钮
@@ -504,12 +546,6 @@ class MessageLine:
             btn_y = list_y + (self.dropdown.expanded_height if self.dropdown.expanded else self.dropdown.height) + 10
             self.submit_button.set_position(btn_x, btn_y)
             self.submit_button.draw(surface)
-
-        else:
-            # 绘制普通文字
-            for text in self.text_parts:
-                text_surf = self.font.render(str(text), True, self.color)
-                surface.blit(text_surf, (current_x, current_y))
 
     def handle_event(self, event, relative_x, relative_y):
         """处理按钮事件 - 修复坐标计算"""
@@ -661,7 +697,7 @@ class TextInput:
 
 
 class ScrollText:
-    """带滚动条的文本显示区域（支持按钮消息和下拉列表）- 修复版"""
+    """带滚动条的文本显示区域（支持按钮消息和下拉列表）- 支持多行文本"""
 
     def __init__(self, rect, font=None):
         self.rect = pygame.Rect(rect)
@@ -685,7 +721,10 @@ class ScrollText:
 
     def add_line(self, content, color=COLOR_MSG_DEFAULT, button_callback=None):
         """添加一行内容（可能是文字或按钮组或下拉列表）"""
-        line = MessageLine(content, color, self.font)
+        # 计算可用宽度（减去滚动条和边距）
+        max_width = self.rect.width - self.scrollbar_width - 20
+
+        line = MessageLine(content, color, self.font, max_width)
 
         # 如果是按钮行或下拉列表行，设置回调
         if button_callback and (line.buttons or line.submit_button):
@@ -702,6 +741,7 @@ class ScrollText:
             self.scroll_y = total_height - visible_height
 
     def draw(self, surface):
+        """修复后的绘制方法，正确显示多行文本"""
         # 绘制背景
         pygame.draw.rect(surface, COLOR_MSG_PANEL_BG, self.rect, border_radius=4)
         pygame.draw.rect(surface, COLOR_FRAME_BORDER, self.rect, width=1, border_radius=4)
@@ -714,36 +754,51 @@ class ScrollText:
 
         # 绘制内容
         y_offset = self.rect.y + 5 - self.scroll_y
+
         for line in self.lines:
-            if y_offset + line.height > self.rect.y and y_offset < self.rect.bottom:
-                line.draw(surface, self.rect.x + 8, y_offset,
-                          self.rect.width - self.scrollbar_width - 15)
+            # 只绘制可见区域内的内容
+            if y_offset + line.height < self.rect.y:
+                y_offset += line.height
+                continue
+            if y_offset > self.rect.bottom:
+                break
 
-                # 重要：每次绘制时重新设置按钮和下拉列表的位置
-                if line.buttons:
-                    current_x = self.rect.x + 8
-                    current_draw_y = y_offset
-                    spacing = 10
+            # 绘制多行文本
+            current_text_y = y_offset
+            for text_line in line.text_lines:
+                text_surf = self.font.render(text_line, True, line.color)
+                surface.blit(text_surf, (self.rect.x + 8, current_text_y))
+                current_text_y += self.font.get_height() + 4
 
-                    for btn in line.buttons:
-                        # 检查是否需要换行
-                        if current_x + btn.width > self.rect.x + 8 + self.rect.width - self.scrollbar_width - 15:
-                            current_x = self.rect.x + 8
-                            current_draw_y += btn.height + 5
+            # 绘制按钮（如果有）
+            if line.buttons:
+                current_x = self.rect.x + 8
+                current_btn_y = current_text_y  # 从文本下方开始
+                spacing = 10
 
-                        btn.set_position(current_x, current_draw_y + (line.height - btn.height) // 2)
-                        current_x += btn.width + spacing
+                for btn in line.buttons:
+                    # 检查是否需要换行
+                    if current_x + btn.width > self.rect.x + 8 + self.rect.width - self.scrollbar_width - 15:
+                        current_x = self.rect.x + 8
+                        current_btn_y += btn.height + 5
 
-                if line.dropdown and line.submit_button:
-                    list_x = self.rect.x + 8
-                    list_y = y_offset + 5
-                    line.dropdown.set_position(list_x, list_y)
+                    btn.set_position(current_x, current_btn_y)
+                    btn.draw(surface)
+                    current_x += btn.width + spacing
 
-                    # 提交按钮位置
-                    btn_x = list_x
-                    btn_y = list_y + (
-                        line.dropdown.expanded_height if line.dropdown.expanded else line.dropdown.height) + 10
-                    line.submit_button.set_position(btn_x, btn_y)
+            # 绘制下拉列表和提交按钮（如果有）
+            if line.dropdown and line.submit_button:
+                list_x = self.rect.x + 8
+                list_y = current_text_y + 5
+                line.dropdown.set_position(list_x, list_y)
+                line.dropdown.draw(surface)
+
+                # 提交按钮位置
+                btn_x = list_x
+                btn_y = list_y + (
+                    line.dropdown.expanded_height if line.dropdown.expanded else line.dropdown.height) + 10
+                line.submit_button.set_position(btn_x, btn_y)
+                line.submit_button.draw(surface)
 
             y_offset += line.height
 
@@ -1117,6 +1172,8 @@ class GameClient:
         rule_y = 50 + map_height + 12
         rule_height = WINDOW_HEIGHT - rule_y - 70
         self.rule_panel = ScrollText((right_x, rule_y, right_width, rule_height), font=FONT_RULE_CONTENT())
+
+        # 初始化玩法说明内容（支持自动换行）
         self._init_rule_content()
 
         # 底部输入区
@@ -1129,26 +1186,47 @@ class GameClient:
         self.config_dialog = None
 
     def _init_rule_content(self):
-        """初始化玩法说明内容"""
-        rules = [
-            ("🎮 基础操作规则", COLOR_TEXT_LABEL_TITLE),
-            ("1. 连接服务器后，在输入框输入指令并回车/点击发送即可执行操作", COLOR_MSG_DEFAULT),
-            ("2. 指令支持：移动、调查、交互、查看道具、提交推理结论等", COLOR_MSG_DEFAULT),
-            ("3. 地图面板可切换不同楼层，查看当前场景布局", COLOR_MSG_DEFAULT),
+        """初始化玩法说明内容 - 优化自动换行"""
+        # 定义规则文本（原始内容）
+        rules_raw = [
+            ("游戏背景设定", COLOR_TEXT_LABEL_TITLE),
+            ("在世界上，存在名为“魔女”的种族。在人类发现他们后，出于对不可控力量的恐惧，人类发动了战争将这个种族从世界上抹去。而在最后一名魔女死亡之前，为了报复人类，她将名为‘魔女因子’的物质散播至世界",
+             COLOR_MSG_DEFAULT),
+            ("一些受过心理创伤的少女被魔女因子感染后，便会成为‘预备魔女’，而一旦再次经历心理创伤，这些预备魔女便会‘魔女化’，成为拥有强大力量，同时拥有强烈杀戮欲望的‘魔女’",
+             COLOR_MSG_DEFAULT),
+            ("为了防止最坏的情况发生，国家找到了检测‘魔女因子’的方法，并将所有的‘预备魔女’囚禁于一座监牢中，一旦监牢内发生杀人案，典狱长将会举行‘魔女审判’，将预备魔女们票选出的‘魔女’处刑",
+             COLOR_MSG_DEFAULT),
+            ("在游戏中，部分玩家需要扮演‘预备魔女’的角色，找出并票选出所有的‘魔女’将其处刑。而另一部分玩家会成为‘魔女’，她们希望杀死所有人",
+             COLOR_MSG_DEFAULT),
             ("", COLOR_MSG_DEFAULT),
-            ("🔍 游戏核心玩法", COLOR_TEXT_LABEL_TITLE),
-            ("1. 本游戏为文字推理类游戏，通过探索场景收集线索", COLOR_MSG_DEFAULT),
-            ("2. 收集到的线索会在消息面板提示，需整合线索完成推理", COLOR_MSG_DEFAULT),
-            ("3. 遇到NPC可触发对话，获取关键剧情和推理提示", COLOR_MSG_DEFAULT),
-            ("4. 禁止使用违规指令，违规会触发系统警告并断开连接", COLOR_MSG_DEFAULT),
+            ("基础操作规则", COLOR_TEXT_LABEL_TITLE),
+            ("1. 连接服务器后，可以开始输入昵称", COLOR_MSG_DEFAULT),
+            ("2. 在选择人物时，请完整且区分大小写地输入列出的人物昵称，如果输入后程序无反应，请稍等或检查输入是否有误",
+             COLOR_MSG_DEFAULT),
+            ("3. 地图面板可切换不同楼层，查看当前场景布局，每间房间有门的墙上均有窗户，且由于年久失修，窗户玻璃均已碎裂",
+             COLOR_MSG_DEFAULT),
+            ("4. 输入框与游戏过程中弹出的下拉列表或按钮等价，可以使用输入框输入按钮上的内容进行选择", COLOR_MSG_DEFAULT),
+            ("5. 在消息界面弹出下拉列表或按钮时，使用下拉列表或按钮进行选择，尽量避免使用输入框输入", COLOR_MSG_DEFAULT),
             ("", COLOR_MSG_DEFAULT),
-            ("💡 温馨提示", COLOR_TEXT_LABEL_TITLE),
-            ("1. 若连接断开，请检查服务器配置并重新连接", COLOR_MSG_DEFAULT),
-            ("2. 地图加载失败时，确认地图图片文件路径是否正确", COLOR_MSG_DEFAULT),
-            ("3. 所有操作指令需符合游戏内场景逻辑，无效指令会提示错误", COLOR_MSG_DEFAULT),
-            ("4. 游戏过程中保持网络稳定，避免数据传输异常", COLOR_MSG_DEFAULT),
+            ("游戏核心玩法", COLOR_TEXT_LABEL_TITLE),
+            ("1. 本游戏为多人对抗推理类游戏，通过探索场景收集线索", COLOR_MSG_DEFAULT),
+            ("2. 参与游戏的玩家中，有一名玩家在游戏开始时会成为魔女，随着游戏进行，可能会有更多玩家成为魔女",
+             COLOR_MSG_DEFAULT),
+            ("3. 魔女可以攻击其他玩家，玩家被击杀后会留下尸体，当尸体被其他玩家发现时游戏进入搜证阶段，魔女杀人后玩家可能会获取到有关凶手与杀人手法的其他证据",
+             COLOR_MSG_DEFAULT),
+            ("4. 搜证结束后进入发言阶段，玩家可以通过提交已有证据进行发言，当所有玩家发言结束后将进行一轮总结，随后进行投票，得票最高的玩家将被处刑",
+             COLOR_MSG_DEFAULT),
+            ("5. 魔女需要杀死所有非魔女玩家，非魔女玩家需要在投票时票选出魔女，直到所有魔女均被处刑", COLOR_MSG_DEFAULT),
+            ("6. 收集到的线索可以在手机中查看，玩家需整合线索完成推理并找出魔女，魔女则需隐藏自己", COLOR_MSG_DEFAULT),
+            ("7. 同时，每名玩家都拥有不同的‘魔法’，在适当时机发动来为自己争取优势吧", COLOR_MSG_DEFAULT),
         ]
-        for text, color in rules:
+
+        # 清空现有内容
+        self.rule_panel.lines = []
+
+        # 添加规则文本，确保自动换行生效
+        for text, color in rules_raw:
+            # 直接使用add_line方法，它会自动处理换行
             self.rule_panel.add_line(text, color)
 
     def _load_maps(self):
@@ -1159,7 +1237,7 @@ class GameClient:
                     img = pygame.image.load(path).convert()
                     self.map_surfaces[name] = img
                     self.map_view.set_tab_content(i, img)
-                    self.add_message(f"✅ 加载地图: {name}", COLOR_MSG_SUCCESS)
+                    self.add_message(f"加载地图: {name}", COLOR_MSG_SUCCESS)
                 else:
                     # 创建错误提示表面
                     surf = pygame.Surface((400, 225))
@@ -1167,9 +1245,9 @@ class GameClient:
                     text = FONT_MAIN().render(f"地图文件不存在: {path}", True, COLOR_MSG_ERROR)
                     surf.blit(text, (20, 100))
                     self.map_view.set_tab_content(i, surf)
-                    self.add_message(f"⚠️ {name} 文件不存在: {path}", COLOR_MSG_ERROR)
+                    self.add_message(f"{name} 文件不存在: {path}", COLOR_MSG_ERROR)
             except Exception as e:
-                self.add_message(f"❌ 加载{name}失败: {str(e)}", COLOR_MSG_ERROR)
+                self.add_message(f"加载{name}失败: {str(e)}", COLOR_MSG_ERROR)
 
     def show_config_dialog(self):
         """显示服务器配置对话框"""
@@ -1476,6 +1554,9 @@ class GameClient:
         # 更新文本输入框位置
         if self.input_entry.active:
             pygame.key.set_text_input_rect(self.input_entry.rect)
+
+        # 重新初始化玩法说明内容，以便根据新宽度重新换行
+        self._init_rule_content()
 
 
 def main():

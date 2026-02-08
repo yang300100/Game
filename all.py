@@ -279,7 +279,7 @@ class Player:
         else:
             send_to_player(self.id,"选择你的目标")
             kill_lst = set(killer_list_nickname_near+killer_list_nickname_far)
-            kill_str = "list:"+"$".join(kill_lst)
+            kill_str = "list:$"+"$".join(kill_lst)
             choose = get_message(self.id,kill_str)
 
         killer_choose = ""
@@ -394,8 +394,39 @@ class Ema(Player):
         super().__init__(player_id, conn, player_num)
         self.name = "Ema"
     def magic(self):
-        pass
-    # TODO:完成魔女杀手魔法
+        global player_list,USING_HTML
+        if self.magic_used > 0:
+            aim_list = []
+            for i in player_list:
+                if i.id != self.id and i.life > 0:
+                    aim_list.append(i.nickname)
+            aim_str = "list:$" + "$".join(aim_list) + "$取消"
+            if USING_HTML:
+                send_to_player(self.id,"可选目标：" + " ".join(aim_str) + " 取消" +"\n")
+                choose = get_message(self.id,"请选择你发动技能的目标")
+            else:
+                send_to_player(self.id,"请选择你发动技能的目标")
+                choose = get_message(self.id,aim_str)
+
+            if choose in [i.nickname for i in player_list]:
+                player = [obj for obj in player_list if obj.nickname == choose][0]
+            else:
+                send_to_player(self.id,"取消技能使用")
+                return
+            if player.killer == 1:
+                self.magic_used -= 1
+                player.life = 0
+                send_to_player(self.id,"你成功击杀了魔女")
+            else:
+                self.life -= 1
+                player.life = 0
+                send_to_player(self.id,"你选择的人不是魔女")
+
+        else:
+            send_to_player(self.id,"魔法使用次数已用尽")
+            return
+    # TODO:
+
 
 
 class Noa(Player):
@@ -542,7 +573,7 @@ class Miria(Player):
             aim = get_message(self.id,"你要与谁互换位置和背包\n")
         else:
             send_to_player(self.id,"选择玩家:")
-            choose_str = "list:"+"$".join(choose_list)
+            choose_str = "list:$"+"$".join(choose_list)
             aim = get_message(self.id,choose_str)
 
         for i in player_list:
@@ -806,7 +837,6 @@ def activate(player,n):
                     send_to_player(player.id,f"玩家{player.nickname}在{player.location}发现了一具尸体，进入搜证阶段\n")
                     break
 
-
 speech_finish = 0
 def end_speak(player):
     global player_list,USING_HTML
@@ -834,16 +864,16 @@ def end_speak(player):
                     choose_list = []
                     for j in player_list:
                         if j.id != player.id and j.life == 1:
-                            choose_list.append(j)
+                            choose_list.append(j.nickname)
                     if USING_HTML:
                         send_to_player(player.id, "可选玩家：")
                         send_to_player(player.id," ".join(choose_list))
                         choose = get_message(player.id,"\n请输入玩家昵称,输入空即为放弃使用魔法\n")
                     else:
-                        name_str = "list:"+"$".join(choose_list)+"$无"
+                        name_str = "list:$"+"$".join(choose_list)+"$无"
                         choose = get_message(player.id,name_str)
                     for k in choose_list:
-                        if k.nickname == choose:
+                        if k == choose:
                             k.jump_speak = 1
                             send_to_player(player.id,f"你使用魔法成功，使玩家{choose}提交证据后跳过发言一次\n")
                             player.magic_used -= 1
@@ -857,7 +887,7 @@ def end_speak(player):
                         send_to_player(i," ".join(item_list))
                         speech = get_message(i,"\n请输入你要提交的证据,输入其他跳过发言：\n")
                     else:
-                        name_str = "list:"+"$".join(item_list)+"$跳过"
+                        name_str = "list:$"+"$".join(item_list)+"$跳过"
                         speech = get_message(i, name_str)
                     if speech in item_list:
                         broadcast(f"玩家{player.nickname}提交了证据：“{speech}”\n")
@@ -910,7 +940,6 @@ def end_speak(player):
 
 def get_ticket(player):
     global player_list,USING_HTML,max_player_num
-    list_str = ""
     ticket_list = []
     for i in player_list:
         ticket_list.append(i.nickname)
@@ -920,7 +949,7 @@ def get_ticket(player):
             send_to_player(player.id, "玩家列表：" + " ".join(ticket_list))
             answer = get_message(player.id, "请玩家进行投票，输入你要投票的玩家昵称\n")
         else:
-            list_str = "list:" + "$".join(ticket_list)
+            list_str = "list:$" + "$".join(ticket_list)
             send_to_player(player.id, "选择你认为是魔女的玩家")
             answer = get_message(player.id, list_str)
     ticket = [0]* max_player_num
@@ -932,6 +961,11 @@ def get_ticket(player):
     max_vote = max(ticket)
     player_list[ticket.index(max_vote)].life = 0
     send_to_player(player.id, f"玩家{player_list[ticket.index(max_vote)].nickname}被处刑")
+    if player_list[ticket.index(max_vote)].killer == 1:
+        send_to_player(player.id,"恭喜你们成功处刑了魔女")
+    else:
+        send_to_player(player.id,"很遗憾，你们处刑的不是魔女")
+
 
 def game_start(player):
     global ticket,player_list,USING_HTML
@@ -1233,8 +1267,8 @@ dead_search = 0                 # 死者是否被发现，0-未被发现，1-已
 player_list = []                # 全局玩家列表
 dead_list = []                  # 全局死亡玩家列表(id)
 location_list = []  # 地点列表，用于计算对应地点之间的距离
-p_list = [Shiro, Meruru, Anan, Miria, Noa] #人物类存储列表
-p_name_list = ["Shiro", "Meruru", "Anan", "Miria", "Noa"]    # 人物类名称列表
+p_list = [Shiro, Meruru, Anan, Miria, Noa, Ema] #人物类存储列表
+p_name_list = ["Shiro", "Meruru", "Anan", "Miria", "Noa", "Ema"]    # 人物类名称列表
 time_start = [2026,1,6,9,00,0]  # 游戏的起始游戏时间
 time_real_start = time.time()   # 获取真实时间戳，用于计算时间流逝
 API_KEY = "ollama"
